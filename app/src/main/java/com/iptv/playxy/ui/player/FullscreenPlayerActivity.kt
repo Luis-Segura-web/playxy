@@ -64,6 +64,17 @@ class FullscreenPlayerActivity : ComponentActivity() {
             }
         }
     }
+    
+    override fun onPause() {
+        super.onPause()
+        // Player will be paused when activity goes to background
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Player will resume when activity comes to foreground
+        setupImmersiveMode() // Re-apply immersive mode after returning
+    }
 
     private fun setupImmersiveMode() {
         // Keep screen on

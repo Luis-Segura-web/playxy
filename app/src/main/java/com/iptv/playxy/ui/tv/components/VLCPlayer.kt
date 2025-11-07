@@ -27,7 +27,7 @@ fun VLCPlayer(
 ) {
     val context = LocalContext.current
     
-    val exoPlayer = remember {
+    val exoPlayer = remember(url) {
         ExoPlayer.Builder(context).build().apply {
             // Set up player listener
             addListener(object : Player.Listener {
@@ -53,13 +53,7 @@ fun VLCPlayer(
         }
     }
     
-    DisposableEffect(url) {
-        if (url.isNotEmpty() && url != exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()) {
-            exoPlayer.setMediaItem(MediaItem.fromUri(url))
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
-        }
-        
+    DisposableEffect(exoPlayer) {
         onDispose {
             exoPlayer.release()
         }
