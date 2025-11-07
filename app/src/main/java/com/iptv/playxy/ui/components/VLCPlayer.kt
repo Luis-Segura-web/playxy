@@ -1,7 +1,6 @@
 package com.iptv.playxy.ui.components
 
-import android.view.ViewGroup
-import android.widget.FrameLayout
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -9,15 +8,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
 
 /**
- * Video Player Component
+ * VLC Player Component
  * 
- * This component is used to play IPTV streams using ExoPlayer
+ * This component is used to play IPTV streams using VLC SDK
  * 
  * @param streamUrl The URL of the stream to play
  * @param modifier Modifier for the composable
@@ -35,35 +34,56 @@ fun VLCPlayer(
 ) {
     val context = LocalContext.current
     
-    val exoPlayer = remember(streamUrl) {
-        ExoPlayer.Builder(context).build().apply {
-            // Set up player listener
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    when (playbackState) {
-                        Player.STATE_BUFFERING -> onBuffering()
-                        Player.STATE_READY -> onPlaying()
-                        Player.STATE_IDLE, Player.STATE_ENDED -> {}
-                    }
-                }
-                
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    onError(error.message ?: "Error de reproducción")
-                }
-            })
-            
-            // Prepare and play the media
-            if (streamUrl.isNotEmpty()) {
-                setMediaItem(MediaItem.fromUri(streamUrl))
-                prepare()
-                playWhenReady = true
-            }
-        }
-    }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var libVLC by remember { mutableStateOf<LibVLC?>(null) }
     
     DisposableEffect(streamUrl) {
+        try {
+            // Initialize LibVLC with options optimized for IPTV streaming
+            val vlc = LibVLC(context, arrayListOf(
+                "--no-drop-late-frames",
+                "--no-skip-frames",
+                "--rtsp-tcp",
+                "--network-caching=1500",
+                "--live-caching=1500"
+            ))
+            libVLC = vlc
+            
+            // Initialize MediaPlayer
+            val player = MediaPlayer(vlc)
+            mediaPlayer = player
+            
+            // Setup event listeners
+            player.setEventListener { event ->
+                when (event.type) {
+                    MediaPlayer.Event.Buffering -> {
+                        if (event.buffering < 100f) {
+                            onBuffering()
+                        } else {
+                            onPlaying()
+                        }
+                    }
+                    MediaPlayer.Event.Playing -> onPlaying()
+                    MediaPlayer.Event.EncounteredError -> onError("Error al reproducir el stream")
+                    else -> {}
+                }
+            }
+            
+            // Start playback
+            if (streamUrl.isNotEmpty()) {
+                val media = Media(vlc, Uri.parse(streamUrl))
+                player.media = media
+                media.release()
+                player.play()
+            }
+        } catch (e: Exception) {
+            onError(e.message ?: "Error desconocido")
+        }
+        
         onDispose {
-            exoPlayer.release()
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            libVLC?.release()
         }
     }
     
@@ -75,13 +95,8 @@ fun VLCPlayer(
     ) {
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = false // We'll use our own controls
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+                VLCVideoLayout(ctx).apply {
+                    mediaPlayer?.attachViews(this, null, false, false)
                 }
             },
             modifier = Modifier.matchParentSize()

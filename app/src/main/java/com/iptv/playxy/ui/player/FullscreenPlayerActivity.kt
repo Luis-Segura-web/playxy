@@ -2,10 +2,9 @@ package com.iptv.playxy.ui.player
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
-import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -25,17 +24,18 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import com.iptv.playxy.ui.theme.PlayxyTheme
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
 
 class FullscreenPlayerActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_STREAM_URL = "stream_url"
         private const val EXTRA_CHANNEL_NAME = "channel_name"
+        private const val CONTROLS_AUTO_HIDE_DELAY = 3000L
 
         fun createIntent(context: Context, streamUrl: String, channelName: String): Intent {
             return Intent(context, FullscreenPlayerActivity::class.java).apply {
@@ -97,51 +97,74 @@ fun FullscreenPlayer(
 ) {
     val context = LocalContext.current
 
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var libVLC by remember { mutableStateOf<LibVLC?>(null) }
     var isPlaying by remember { mutableStateOf(true) }
     var isBuffering by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var showControls by remember { mutableStateOf(true) }
 
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            // Set up player listener
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    when (playbackState) {
-                        Player.STATE_BUFFERING -> isBuffering = true
-                        Player.STATE_READY -> {
-                            isBuffering = false
-                            isPlaying = true
-                            showError = false
-                        }
-                        Player.STATE_IDLE, Player.STATE_ENDED -> {}
-                    }
-                }
-                
-                override fun onIsPlayingChanged(playing: Boolean) {
-                    isPlaying = playing
-                }
-                
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    showError = true
-                    errorMessage = error.message ?: "Error al reproducir el stream"
-                    isBuffering = false
-                }
-            })
-            
-            // Prepare and play the media
-            if (streamUrl.isNotEmpty()) {
-                setMediaItem(MediaItem.fromUri(streamUrl))
-                prepare()
-                playWhenReady = true
-            }
-        }
-    }
+    DisposableEffect(streamUrl) {
+        try {
+            // Initialize LibVLC with options optimized for IPTV streaming
+            val vlc = LibVLC(context, arrayListOf(
+                "--no-drop-late-frames",
+                "--no-skip-frames",
+                "--rtsp-tcp",
+                "--network-caching=1500",
+                "--live-caching=1500",
+                "--clock-jitter=0",
+                "--clock-synchro=0"
+            ))
+            libVLC = vlc
 
-    DisposableEffect(Unit) {
+            // Initialize MediaPlayer
+            val player = MediaPlayer(vlc)
+            mediaPlayer = player
+
+            // Setup event listeners
+            player.setEventListener { event ->
+                when (event.type) {
+                    MediaPlayer.Event.Buffering -> {
+                        isBuffering = event.buffering < 100f
+                        if (event.buffering >= 100f) {
+                            isPlaying = true
+                        }
+                    }
+                    MediaPlayer.Event.Playing -> {
+                        isPlaying = true
+                        isBuffering = false
+                        showError = false
+                    }
+                    MediaPlayer.Event.Paused -> {
+                        isPlaying = false
+                    }
+                    MediaPlayer.Event.EncounteredError -> {
+                        showError = true
+                        errorMessage = "Error al reproducir el stream"
+                        isBuffering = false
+                    }
+                    else -> {}
+                }
+            }
+
+            // Start playback
+            if (streamUrl.isNotEmpty()) {
+                val media = Media(vlc, Uri.parse(streamUrl))
+                player.media = media
+                media.release()
+                player.play()
+            }
+        } catch (e: Exception) {
+            showError = true
+            errorMessage = e.message ?: "Error desconocido"
+        }
+
         onDispose {
-            exoPlayer.release()
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            libVLC?.release()
         }
     }
 
@@ -159,13 +182,8 @@ fun FullscreenPlayer(
         // Video player
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = false // We'll use our own controls
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+                VLCVideoLayout(ctx).apply {
+                    mediaPlayer?.attachViews(this, null, false, false)
                 }
             },
             modifier = Modifier.fillMaxSize()
@@ -206,10 +224,12 @@ fun FullscreenPlayer(
                 // Center play/pause button
                 IconButton(
                     onClick = {
-                        if (isPlaying) {
-                            exoPlayer.pause()
-                        } else {
-                            exoPlayer.play()
+                        mediaPlayer?.let { player ->
+                            if (isPlaying) {
+                                player.pause()
+                            } else {
+                                player.play()
+                            }
                         }
                     },
                     modifier = Modifier
@@ -268,10 +288,10 @@ fun FullscreenPlayer(
         }
     }
 
-    // Auto-hide controls after 3 seconds
+    // Auto-hide controls after delay
     LaunchedEffect(showControls) {
         if (showControls && !isBuffering && !showError) {
-            kotlinx.coroutines.delay(3000)
+            kotlinx.coroutines.delay(3000L)
             showControls = false
         }
     }
