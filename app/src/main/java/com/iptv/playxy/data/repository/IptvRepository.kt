@@ -1,6 +1,6 @@
 package com.iptv.playxy.data.repository
 
-import com.iptv.playxy.data.api.IptvApiService
+import com.iptv.playxy.data.api.ApiServiceFactory
 import com.iptv.playxy.data.db.*
 import com.iptv.playxy.domain.*
 import com.iptv.playxy.util.EntityMapper
@@ -16,7 +16,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class IptvRepository @Inject constructor(
-    private val apiService: IptvApiService,
+    private val apiServiceFactory: ApiServiceFactory,
     private val database: PlayxyDatabase
 ) {
     private val userProfileDao = database.userProfileDao()
@@ -48,10 +48,12 @@ class IptvRepository @Inject constructor(
     
     suspend fun validateCredentials(username: String, password: String, baseUrl: String): Boolean {
         return try {
-            // Create a temporary api service with the base URL
+            // Create API service with the provided base URL
+            val apiService = apiServiceFactory.createService(baseUrl)
             val response = apiService.validateCredentials(username, password)
             response.isSuccessful
         } catch (e: Exception) {
+            e.printStackTrace()
             false
         }
     }
@@ -59,23 +61,33 @@ class IptvRepository @Inject constructor(
     // Content loading operations
     suspend fun loadAllContent(username: String, password: String): Result<Unit> {
         return try {
-            // Load all content types in parallel (simplified sequential for now)
-            loadLiveStreams(username, password)
-            loadVodStreams(username, password)
-            loadSeries(username, password)
-            loadCategories(username, password)
-            
+            // Get the user profile to obtain the base URL
+            val profile = userProfileDao.getProfile()
+            if (profile == null) {
+                return Result.failure(Exception("No user profile found"))
+            }
+
+            // Create API service with the user's base URL
+            val apiService = apiServiceFactory.createService(profile.url)
+
+            // Load all content types
+            loadLiveStreams(apiService, username, password)
+            loadVodStreams(apiService, username, password)
+            loadSeries(apiService, username, password)
+            loadCategories(apiService, username, password)
+
             // Update cache metadata
             val currentTime = System.currentTimeMillis()
             cacheMetadataDao.insertCacheMetadata(CacheMetadata("all_content", currentTime))
             
             Result.success(Unit)
         } catch (e: Exception) {
+            e.printStackTrace()
             Result.failure(e)
         }
     }
     
-    private suspend fun loadLiveStreams(username: String, password: String) {
+    private suspend fun loadLiveStreams(apiService: com.iptv.playxy.data.api.IptvApiService, username: String, password: String) {
         val response = apiService.getLiveStreams(username, password)
         if (response.isSuccessful) {
             val streams = response.body()?.map { ResponseMapper.toLiveStream(it) } ?: emptyList()
@@ -84,7 +96,7 @@ class IptvRepository @Inject constructor(
         }
     }
     
-    private suspend fun loadVodStreams(username: String, password: String) {
+    private suspend fun loadVodStreams(apiService: com.iptv.playxy.data.api.IptvApiService, username: String, password: String) {
         val response = apiService.getVodStreams(username, password)
         if (response.isSuccessful) {
             val streams = response.body()?.map { ResponseMapper.toVodStream(it) } ?: emptyList()
@@ -93,7 +105,7 @@ class IptvRepository @Inject constructor(
         }
     }
     
-    private suspend fun loadSeries(username: String, password: String) {
+    private suspend fun loadSeries(apiService: com.iptv.playxy.data.api.IptvApiService, username: String, password: String) {
         val response = apiService.getSeries(username, password)
         if (response.isSuccessful) {
             val series = response.body()?.map { ResponseMapper.toSeries(it) } ?: emptyList()
@@ -102,7 +114,7 @@ class IptvRepository @Inject constructor(
         }
     }
     
-    private suspend fun loadCategories(username: String, password: String) {
+    private suspend fun loadCategories(apiService: com.iptv.playxy.data.api.IptvApiService, username: String, password: String) {
         categoryDao.deleteAll()
         
         // Load live categories
