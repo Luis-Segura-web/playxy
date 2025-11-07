@@ -6,6 +6,15 @@ Complete IPTV Android application developed in Kotlin following MVVM architectur
 
 ## Implementation Status: ✅ COMPLETE
 
+### ⚠️ Important Update (Database Schema v2)
+
+**Claves Primarias Compuestas**: La base de datos ha sido rediseñada para soportar contenido que aparece en múltiples categorías. Ahora las tablas de contenido (`live_streams`, `vod_streams`, `series`) usan claves primarias compuestas `(streamId/seriesId, categoryId)`.
+
+**Archivos de Documentación**:
+- `DATABASE_SCHEMA_CHANGES.md` - Detalles técnicos de los cambios
+- `USAGE_GUIDE_COMPOSITE_KEYS.md` - Guía de uso y mejores prácticas
+- `CompositeKeyTest.kt` - Pruebas unitarias
+
 ### Completed Components
 
 #### 1. Project Configuration ✅

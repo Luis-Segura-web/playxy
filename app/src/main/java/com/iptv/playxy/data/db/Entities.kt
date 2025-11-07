@@ -15,13 +15,16 @@ data class UserProfileEntity(
     val isValid: Boolean
 )
 
-@Entity(tableName = "live_streams")
+@Entity(
+    tableName = "live_streams",
+    primaryKeys = ["streamId", "categoryId"]
+)
 data class LiveStreamEntity(
-    @PrimaryKey val streamId: String,
+    val streamId: String,
+    val categoryId: String,
     val name: String,
     val streamIcon: String?,
     val isAdult: Boolean,
-    val categoryId: String,
     val tvArchive: Boolean,
     val epgChannelId: String?,
     val added: String?,
@@ -30,9 +33,13 @@ data class LiveStreamEntity(
     val tvArchiveDuration: Int
 )
 
-@Entity(tableName = "vod_streams")
+@Entity(
+    tableName = "vod_streams",
+    primaryKeys = ["streamId", "categoryId"]
+)
 data class VodStreamEntity(
-    @PrimaryKey val streamId: String,
+    val streamId: String,
+    val categoryId: String,
     val name: String,
     val streamIcon: String?,
     val tmdbId: String?,
@@ -41,14 +48,17 @@ data class VodStreamEntity(
     val containerExtension: String,
     val added: String?,
     val isAdult: Boolean,
-    val categoryId: String,
     val customSid: String?,
     val directSource: String?
 )
 
-@Entity(tableName = "series")
+@Entity(
+    tableName = "series",
+    primaryKeys = ["seriesId", "categoryId"]
+)
 data class SeriesEntity(
-    @PrimaryKey val seriesId: String,
+    val seriesId: String,
+    val categoryId: String,
     val name: String,
     val cover: String?,
     val plot: String?,
@@ -62,7 +72,6 @@ data class SeriesEntity(
     val backdropPath: String,
     val youtubeTrailer: String?,
     val episodeRunTime: String?,
-    val categoryId: String,
     val tmdbId: String?,
     val lastModified: String?
 )

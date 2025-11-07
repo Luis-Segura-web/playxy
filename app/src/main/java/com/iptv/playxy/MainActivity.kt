@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    PlayxyApp()
+                    PlayxyNavigation()
                 }
             }
         }
@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun PlayxyApp() {
+fun PlayxyNavigation() {
     val navController = rememberNavController()
     
     NavHost(

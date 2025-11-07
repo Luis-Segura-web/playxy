@@ -26,6 +26,12 @@ interface LiveStreamDao {
     @Query("SELECT * FROM live_streams WHERE categoryId = :categoryId")
     suspend fun getLiveStreamsByCategory(categoryId: String): List<LiveStreamEntity>
     
+    @Query("SELECT * FROM live_streams WHERE streamId = :streamId")
+    suspend fun getLiveStreamsByStreamId(streamId: String): List<LiveStreamEntity>
+
+    @Query("SELECT * FROM live_streams WHERE streamId = :streamId AND categoryId = :categoryId")
+    suspend fun getLiveStream(streamId: String, categoryId: String): LiveStreamEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(streams: List<LiveStreamEntity>)
     
@@ -41,6 +47,12 @@ interface VodStreamDao {
     @Query("SELECT * FROM vod_streams WHERE categoryId = :categoryId")
     suspend fun getVodStreamsByCategory(categoryId: String): List<VodStreamEntity>
     
+    @Query("SELECT * FROM vod_streams WHERE streamId = :streamId")
+    suspend fun getVodStreamsByStreamId(streamId: String): List<VodStreamEntity>
+
+    @Query("SELECT * FROM vod_streams WHERE streamId = :streamId AND categoryId = :categoryId")
+    suspend fun getVodStream(streamId: String, categoryId: String): VodStreamEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(streams: List<VodStreamEntity>)
     
@@ -56,6 +68,12 @@ interface SeriesDao {
     @Query("SELECT * FROM series WHERE categoryId = :categoryId")
     suspend fun getSeriesByCategory(categoryId: String): List<SeriesEntity>
     
+    @Query("SELECT * FROM series WHERE seriesId = :seriesId")
+    suspend fun getSeriesBySeriesId(seriesId: String): List<SeriesEntity>
+
+    @Query("SELECT * FROM series WHERE seriesId = :seriesId AND categoryId = :categoryId")
+    suspend fun getSeries(seriesId: String, categoryId: String): SeriesEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(series: List<SeriesEntity>)
     

@@ -2,16 +2,61 @@
 
 Aplicación IPTV desarrollada en Kotlin para dispositivos móviles Android en formato vertical (Portrait).
 
-## Características
+## 🎯 Características
 
 - **Gestión completa de contenido IPTV**: TV en vivo, VOD (Películas), y Series
 - **Caché local con Room**: Almacenamiento persistente para mejor rendimiento
+- **Soporte para contenido en múltiples categorías**: Claves primarias compuestas (v2)
 - **Soporte HTTP**: Permite conexiones no seguras según requerimientos de proveedores IPTV
 - **Interfaz moderna con Jetpack Compose**: UI declarativa y reactiva
 - **Arquitectura MVVM**: Separación clara de responsabilidades
 - **Manejo robusto de datos inconsistentes**: Adaptadores Gson personalizados
 
-## Arquitectura
+## 📱 Flujo de la Aplicación
+
+1. **SplashScreen**: Verificación de perfil guardado
+2. **LoginScreen**: Autenticación con proveedor IPTV
+3. **LoadingScreen**: Descarga y caché de contenido
+4. **MainScreen**: Navegación con 5 pestañas (Inicio, TV, Películas, Series, Ajustes)
+
+## 🔄 Actualización Importante: Base de Datos v2
+
+### Cambio en el Schema
+
+La base de datos ahora usa **claves primarias compuestas** para soportar contenido que aparece en múltiples categorías:
+
+```kotlin
+// Antes (v1)
+@Entity(tableName = "live_streams")
+data class LiveStreamEntity(
+    @PrimaryKey val streamId: String,
+    val categoryId: String,
+    ...
+)
+
+// Ahora (v2)
+@Entity(
+    tableName = "live_streams",
+    primaryKeys = ["streamId", "categoryId"]
+)
+data class LiveStreamEntity(
+    val streamId: String,
+    val categoryId: String,
+    ...
+)
+```
+
+### Documentación
+
+| Archivo | Descripción |
+|---------|-------------|
+| **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** | ⭐ Referencia rápida y patrones de uso |
+| [DATABASE_SCHEMA_CHANGES.md](DATABASE_SCHEMA_CHANGES.md) | Detalles técnicos de los cambios |
+| [USAGE_GUIDE_COMPOSITE_KEYS.md](USAGE_GUIDE_COMPOSITE_KEYS.md) | Guía completa con ejemplos de código |
+| [COMPOSITE_KEY_CHANGES_SUMMARY.md](COMPOSITE_KEY_CHANGES_SUMMARY.md) | Resumen ejecutivo |
+| [NEXT_STEPS_ACTION_PLAN.md](NEXT_STEPS_ACTION_PLAN.md) | Plan de implementación UI |
+
+## 🏗️ Arquitectura
 
 ### Estructura de Paquetes
 

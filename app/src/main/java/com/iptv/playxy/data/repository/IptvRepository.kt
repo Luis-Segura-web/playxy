@@ -158,15 +158,31 @@ class IptvRepository @Inject constructor(
         return liveStreamDao.getAllLiveStreams().map { EntityMapper.liveStreamToDomain(it) }
     }
     
+    suspend fun getLiveStreamsByCategory(categoryId: String): List<LiveStream> {
+        return liveStreamDao.getLiveStreamsByCategory(categoryId).map { EntityMapper.liveStreamToDomain(it) }
+    }
+
     suspend fun getVodStreams(): List<VodStream> {
         return vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
     }
     
+    suspend fun getVodStreamsByCategory(categoryId: String): List<VodStream> {
+        return vodStreamDao.getVodStreamsByCategory(categoryId).map { EntityMapper.vodStreamToDomain(it) }
+    }
+
     suspend fun getSeries(): List<Series> {
         return seriesDao.getAllSeries().map { EntityMapper.seriesToDomain(it) }
     }
     
+    suspend fun getSeriesByCategory(categoryId: String): List<Series> {
+        return seriesDao.getSeriesByCategory(categoryId).map { EntityMapper.seriesToDomain(it) }
+    }
+
     suspend fun getCategories(type: String): List<Category> {
         return categoryDao.getCategoriesByType(type).map { EntityMapper.categoryToDomain(it) }
+    }
+
+    suspend fun getAllCategories(): List<Category> {
+        return categoryDao.getAllCategories().map { EntityMapper.categoryToDomain(it) }
     }
 }
