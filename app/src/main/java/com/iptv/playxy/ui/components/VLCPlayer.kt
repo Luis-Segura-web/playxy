@@ -61,7 +61,7 @@ fun VLCPlayer(
         }
     }
     
-    DisposableEffect(exoPlayer) {
+    DisposableEffect(streamUrl) {
         onDispose {
             exoPlayer.release()
         }
