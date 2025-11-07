@@ -19,6 +19,7 @@ fun MiniPlayerView(
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
+    onFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (channel == null) return
@@ -31,7 +32,10 @@ fun MiniPlayerView(
         // Video player
         VLCPlayer(
             url = channel.directSource ?: "",
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            onBuffering = { /* Buffering state is already managed by state parameter */ },
+            onPlaying = { /* Playing state is already managed by state parameter */ },
+            onError = { /* Error state is already managed by state parameter */ }
         )
 
         // Overlay controls
@@ -89,6 +93,21 @@ fun MiniPlayerView(
                         modifier = Modifier.size(48.dp)
                     )
                 }
+            }
+
+            // Fullscreen button (bottom-right)
+            IconButton(
+                onClick = onFullscreen,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Fullscreen,
+                    contentDescription = "Pantalla completa",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(32.dp)
+                )
             }
 
             // Buffering indicator

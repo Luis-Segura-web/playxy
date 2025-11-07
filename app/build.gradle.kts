@@ -110,6 +110,12 @@ dependencies {
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
     
+    // ExoPlayer for video playback (better than VLC for Android/Compose)
+    implementation("androidx.media3:media3-exoplayer:1.2.1")
+    implementation("androidx.media3:media3-ui:1.2.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.2.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.2.1")
+    
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

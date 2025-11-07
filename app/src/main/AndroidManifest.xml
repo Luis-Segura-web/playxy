@@ -29,6 +29,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <activity
+            android:name=".ui.player.FullscreenPlayerActivity"
+            android:configChanges="orientation|screenSize"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Playxy" />
     </application>
 
 </manifest>
