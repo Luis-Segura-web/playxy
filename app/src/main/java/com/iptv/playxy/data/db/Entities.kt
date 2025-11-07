@@ -89,3 +89,16 @@ data class CacheMetadata(
     @PrimaryKey val key: String,
     val lastUpdated: Long
 )
+
+@Entity(tableName = "favorite_channels")
+data class FavoriteChannelEntity(
+    @PrimaryKey val channelId: String,
+    val timestamp: Long
+)
+
+@Entity(tableName = "recent_channels")
+data class RecentChannelEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val channelId: String,
+    val timestamp: Long
+)

@@ -161,4 +161,35 @@ object EntityMapper {
             parentId = entity.parentId
         )
     }
+    
+    // FavoriteChannel mappings
+    fun toEntity(favorite: FavoriteChannel): FavoriteChannelEntity {
+        return FavoriteChannelEntity(
+            channelId = favorite.channelId,
+            timestamp = favorite.timestamp
+        )
+    }
+    
+    fun favoriteChannelToDomain(entity: FavoriteChannelEntity): FavoriteChannel {
+        return FavoriteChannel(
+            channelId = entity.channelId,
+            timestamp = entity.timestamp
+        )
+    }
+    
+    // RecentChannel mappings
+    fun toEntity(recent: RecentChannel, id: Int = 0): RecentChannelEntity {
+        return RecentChannelEntity(
+            id = id,
+            channelId = recent.channelId,
+            timestamp = recent.timestamp
+        )
+    }
+    
+    fun recentChannelToDomain(entity: RecentChannelEntity): RecentChannel {
+        return RecentChannel(
+            channelId = entity.channelId,
+            timestamp = entity.timestamp
+        )
+    }
 }

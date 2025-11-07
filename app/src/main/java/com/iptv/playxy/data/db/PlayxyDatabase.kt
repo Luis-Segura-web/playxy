@@ -11,9 +11,11 @@ import androidx.room.TypeConverters
         VodStreamEntity::class,
         SeriesEntity::class,
         CategoryEntity::class,
-        CacheMetadata::class
+        CacheMetadata::class,
+        FavoriteChannelEntity::class,
+        RecentChannelEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -24,4 +26,6 @@ abstract class PlayxyDatabase : RoomDatabase() {
     abstract fun seriesDao(): SeriesDao
     abstract fun categoryDao(): CategoryDao
     abstract fun cacheMetadataDao(): CacheMetadataDao
+    abstract fun favoriteChannelDao(): FavoriteChannelDao
+    abstract fun recentChannelDao(): RecentChannelDao
 }

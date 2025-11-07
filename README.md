@@ -5,8 +5,10 @@ Aplicación IPTV desarrollada en Kotlin para dispositivos móviles Android en fo
 ## 🎯 Características
 
 - **Gestión completa de contenido IPTV**: TV en vivo, VOD (Películas), y Series
+- **🆕 Pantalla TV completa**: Mini-reproductor, categorías, favoritos y recientes
 - **Caché local con Room**: Almacenamiento persistente para mejor rendimiento
-- **Soporte para contenido en múltiples categorías**: Claves primarias compuestas (v2)
+- **Soporte para contenido en múltiples categorías**: Claves primarias compuestas (v3)
+- **Favoritos y Recientes**: Persistencia de preferencias del usuario
 - **Soporte HTTP**: Permite conexiones no seguras según requerimientos de proveedores IPTV
 - **Interfaz moderna con Jetpack Compose**: UI declarativa y reactiva
 - **Arquitectura MVVM**: Separación clara de responsabilidades
@@ -19,34 +21,45 @@ Aplicación IPTV desarrollada en Kotlin para dispositivos móviles Android en fo
 3. **LoadingScreen**: Descarga y caché de contenido
 4. **MainScreen**: Navegación con 5 pestañas (Inicio, TV, Películas, Series, Ajustes)
 
-## 🔄 Actualización Importante: Base de Datos v2
+## 🔄 Actualización Importante: Base de Datos v3
 
-### Cambio en el Schema
+### Cambios en el Schema
 
-La base de datos ahora usa **claves primarias compuestas** para soportar contenido que aparece en múltiples categorías:
+La base de datos ahora incluye **gestión de favoritos y recientes** además de las claves primarias compuestas:
 
 ```kotlin
-// Antes (v1)
-@Entity(tableName = "live_streams")
-data class LiveStreamEntity(
-    @PrimaryKey val streamId: String,
-    val categoryId: String,
-    ...
+// v3: Nuevas tablas para favoritos y recientes
+@Entity(tableName = "favorite_channels")
+data class FavoriteChannelEntity(
+    @PrimaryKey val channelId: String,
+    val timestamp: Long
 )
 
-// Ahora (v2)
-@Entity(
-    tableName = "live_streams",
-    primaryKeys = ["streamId", "categoryId"]
-)
-data class LiveStreamEntity(
-    val streamId: String,
-    val categoryId: String,
-    ...
+@Entity(tableName = "recent_channels")
+data class RecentChannelEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val channelId: String,
+    val timestamp: Long
 )
 ```
 
-### Documentación
+### 🆕 Pantalla TV
+
+La pantalla de TV en vivo está completamente implementada con:
+- **Mini-reproductor** con controles overlay (play/pause/next/prev/close)
+- **Categorías virtuales**: Todos, Favoritos, Recientes + categorías del proveedor
+- **Gestión de favoritos**: Agregar/quitar canales favoritos con persistencia
+- **Historial de recientes**: Últimos 50 canales reproducidos
+- **Filtrado por categoría**: Scroll horizontal de categorías con FilterChips
+- **Lista de canales**: Scroll vertical con logos e iconos de favorito
+
+Ver documentación completa en:
+- **[TV_SCREEN_QUICK_SUMMARY.md](TV_SCREEN_QUICK_SUMMARY.md)** ⭐ Resumen ejecutivo
+- **[TV_SCREEN_IMPLEMENTATION.md](TV_SCREEN_IMPLEMENTATION.md)** - Especificación técnica
+- **[TV_SCREEN_ARCHITECTURE.md](TV_SCREEN_ARCHITECTURE.md)** - Diagramas y arquitectura
+- **[TV_SCREEN_USAGE_GUIDE.md](TV_SCREEN_USAGE_GUIDE.md)** - Guía de uso y extensión
+
+### Documentación Base de Datos
 
 | Archivo | Descripción |
 |---------|-------------|
@@ -55,6 +68,15 @@ data class LiveStreamEntity(
 | [USAGE_GUIDE_COMPOSITE_KEYS.md](USAGE_GUIDE_COMPOSITE_KEYS.md) | Guía completa con ejemplos de código |
 | [COMPOSITE_KEY_CHANGES_SUMMARY.md](COMPOSITE_KEY_CHANGES_SUMMARY.md) | Resumen ejecutivo |
 | [NEXT_STEPS_ACTION_PLAN.md](NEXT_STEPS_ACTION_PLAN.md) | Plan de implementación UI |
+
+### Documentación Pantalla TV
+
+| Archivo | Descripción |
+|---------|-------------|
+| **[TV_SCREEN_QUICK_SUMMARY.md](TV_SCREEN_QUICK_SUMMARY.md)** | ⭐ Resumen rápido de la implementación |
+| [TV_SCREEN_IMPLEMENTATION.md](TV_SCREEN_IMPLEMENTATION.md) | Especificación técnica completa |
+| [TV_SCREEN_ARCHITECTURE.md](TV_SCREEN_ARCHITECTURE.md) | Diagramas de arquitectura y flujo de datos |
+| [TV_SCREEN_USAGE_GUIDE.md](TV_SCREEN_USAGE_GUIDE.md) | Guía para desarrolladores y usuarios |
 
 ## 🏗️ Arquitectura
 
@@ -67,6 +89,10 @@ com.iptv.playxy/
 │   ├── login/             # Pantalla de login
 │   ├── loading/           # Pantalla de carga de contenido
 │   ├── main/              # Pantalla principal con navegación
+│   ├── tv/                # 🆕 Pantalla TV con mini-reproductor
+│   │   ├── TVViewModel.kt
+│   │   ├── TVScreen.kt
+│   │   └── components/    # Componentes de la pantalla TV
 │   ├── components/        # Componentes reutilizables
 │   └── theme/             # Tema de Material Design 3
 ├── data/                   # Capa de datos
@@ -74,6 +100,11 @@ com.iptv.playxy/
 │   ├── db/                # Entidades Room y DAOs
 │   └── repository/        # Repositorios (coordinación de fuentes)
 ├── domain/                 # Modelos de dominio
+│   ├── LiveStream.kt
+│   ├── Category.kt
+│   ├── FavoriteChannel.kt # 🆕
+│   ├── RecentChannel.kt   # 🆕
+│   └── PlayerState.kt     # 🆕
 ├── util/                   # Utilidades y helpers
 └── di/                     # Módulos de Hilt para DI
 ```
@@ -87,6 +118,7 @@ com.iptv.playxy/
 - **Room**: Base de datos local
 - **Navigation Compose**: Navegación entre pantallas
 - **Coroutines**: Programación asíncrona
+- **Coil**: Carga de imágenes asíncrona (🆕)
 
 ## Flujo de la Aplicación
 
@@ -114,10 +146,36 @@ com.iptv.playxy/
 ### 4. Main Screen
 - Navegación inferior con 5 pestañas:
   1. **Inicio**: Estadísticas de contenido disponible
-  2. **TV**: En construcción
+  2. **TV**: 🆕 Pantalla completa con mini-reproductor, categorías y favoritos
   3. **Películas**: En construcción
   4. **Series**: En construcción
   5. **Ajustes**: Cerrar sesión y forzar recarga
+
+#### Características de la Pantalla TV
+
+La pestaña TV incluye una implementación completa con:
+
+**Layout de 4 secciones**:
+1. **Mini-Reproductor** (16:9) - Solo visible cuando hay reproducción activa
+   - Controles overlay: Close, Play/Pause, Previous, Next
+   - Indicador de buffering
+   - Mensajes de error
+2. **Información del Canal** - Muestra logo y nombre del canal actual
+3. **Barra de Categorías** - Scroll horizontal con FilterChips
+4. **Lista de Canales** - Scroll vertical con logos y botón de favorito
+
+**Categorías**:
+- **Todos**: Todos los canales (sin duplicados)
+- **Favoritos**: Canales marcados como favoritos
+- **Recientes**: Últimos 50 canales reproducidos
+- **[Categorías del Proveedor]**: Ordenadas alfabéticamente
+
+**Funcionalidades**:
+- Marcar/desmarcar favoritos (persiste en Room)
+- Historial de reproducción automático
+- Navegación entre canales (anterior/siguiente)
+- Filtrado por categoría
+- Carga de imágenes asíncrona con Coil
 
 ## Manejo de Datos
 
