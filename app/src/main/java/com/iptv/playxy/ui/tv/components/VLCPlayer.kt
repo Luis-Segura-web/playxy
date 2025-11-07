@@ -1,17 +1,20 @@
 package com.iptv.playxy.ui.tv.components
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
 
 /**
- * VLC Player component
- * TODO: Integrate actual VLC SDK when available
+ * VLC Player component for playing IPTV streams using VLC
  */
 @Composable
 fun VLCPlayer(
@@ -21,15 +24,71 @@ fun VLCPlayer(
     onPlaying: () -> Unit = {},
     onError: (String) -> Unit = {}
 ) {
-    // Placeholder for VLC player implementation
+    val context = LocalContext.current
+    
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var libVLC by remember { mutableStateOf<LibVLC?>(null) }
+    
+    DisposableEffect(url) {
+        try {
+            // Initialize LibVLC with options optimized for IPTV streaming
+            val vlc = LibVLC(context, arrayListOf(
+                "--no-drop-late-frames",
+                "--no-skip-frames",
+                "--rtsp-tcp",
+                "--network-caching=1500",
+                "--live-caching=1500"
+            ))
+            libVLC = vlc
+            
+            // Initialize MediaPlayer
+            val player = MediaPlayer(vlc)
+            mediaPlayer = player
+            
+            // Setup event listeners
+            player.setEventListener { event ->
+                when (event.type) {
+                    MediaPlayer.Event.Buffering -> {
+                        if (event.buffering < 100f) {
+                            onBuffering()
+                        } else {
+                            onPlaying()
+                        }
+                    }
+                    MediaPlayer.Event.Playing -> onPlaying()
+                    MediaPlayer.Event.EncounteredError -> onError("Error al reproducir el stream")
+                    else -> {}
+                }
+            }
+            
+            // Start playback
+            if (url.isNotEmpty()) {
+                val media = Media(vlc, Uri.parse(url))
+                player.media = media
+                media.release()
+                player.play()
+            }
+        } catch (e: Exception) {
+            onError(e.message ?: "Error desconocido")
+        }
+        
+        onDispose {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            libVLC?.release()
+        }
+    }
+    
     Box(
-        modifier = modifier.background(Color.Black),
-        contentAlignment = Alignment.Center
+        modifier = modifier.background(Color.Black)
     ) {
-        Text(
-            text = "Video Player\n$url",
-            color = Color.White,
-            style = MaterialTheme.typography.bodySmall
+        AndroidView(
+            factory = { ctx ->
+                VLCVideoLayout(ctx).apply {
+                    mediaPlayer?.attachViews(this, null, false, false)
+                }
+            },
+            modifier = Modifier.matchParentSize()
         )
     }
 }

@@ -6,13 +6,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.iptv.playxy.ui.player.FullscreenPlayerActivity
 import com.iptv.playxy.ui.tv.components.*
 
 @Composable
 fun TVScreen(
     viewModel: TVViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val playerState by viewModel.playerState.collectAsState()
     val currentChannel by viewModel.currentChannel.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -28,7 +31,17 @@ fun TVScreen(
             onClose = { viewModel.closePlayer() },
             onPlayPause = { viewModel.togglePlayPause() },
             onNext = { viewModel.playNextChannel() },
-            onPrev = { viewModel.playPreviousChannel() }
+            onPrev = { viewModel.playPreviousChannel() },
+            onFullscreen = {
+                currentChannel?.let { channel ->
+                    val intent = FullscreenPlayerActivity.createIntent(
+                        context = context,
+                        streamUrl = channel.directSource ?: "",
+                        channelName = channel.name
+                    )
+                    context.startActivity(intent)
+                }
+            }
         )
 
         // 2. Current Channel Info (Only shown if currentChannel is not null)

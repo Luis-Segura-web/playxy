@@ -10,6 +10,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        // VideoLAN Maven repository for VLC
+        maven { url = uri("https://download.videolan.org/pub/videolan/vlc-android/maven") }
     }
 }
 
