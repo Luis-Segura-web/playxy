@@ -76,4 +76,12 @@ object AppModule {
         .fallbackToDestructiveMigration()
         .build()
     }
+    
+    @Provides
+    @Singleton
+    fun provideFavoriteChannelDao(database: PlayxyDatabase) = database.favoriteChannelDao()
+    
+    @Provides
+    @Singleton
+    fun provideRecentChannelDao(database: PlayxyDatabase) = database.recentChannelDao()
 }

@@ -107,3 +107,39 @@ interface CacheMetadataDao {
     @Query("DELETE FROM cache_metadata")
     suspend fun deleteAll()
 }
+
+@Dao
+interface FavoriteChannelDao {
+    @Query("SELECT * FROM favorite_channels ORDER BY timestamp DESC")
+    suspend fun getAllFavorites(): List<FavoriteChannelEntity>
+    
+    @Query("SELECT * FROM favorite_channels WHERE channelId = :channelId")
+    suspend fun getFavorite(channelId: String): FavoriteChannelEntity?
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFavorite(favorite: FavoriteChannelEntity)
+    
+    @Query("DELETE FROM favorite_channels WHERE channelId = :channelId")
+    suspend fun deleteFavorite(channelId: String)
+    
+    @Query("DELETE FROM favorite_channels")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface RecentChannelDao {
+    @Query("SELECT * FROM recent_channels ORDER BY timestamp DESC LIMIT 50")
+    suspend fun getRecentChannels(): List<RecentChannelEntity>
+    
+    @Query("SELECT * FROM recent_channels WHERE channelId = :channelId")
+    suspend fun getRecent(channelId: String): RecentChannelEntity?
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecent(recent: RecentChannelEntity)
+    
+    @Query("DELETE FROM recent_channels WHERE channelId = :channelId")
+    suspend fun deleteRecent(channelId: String)
+    
+    @Query("DELETE FROM recent_channels")
+    suspend fun deleteAll()
+}

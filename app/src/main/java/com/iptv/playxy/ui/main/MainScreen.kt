@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.iptv.playxy.ui.MainDestination
+import com.iptv.playxy.ui.tv.TVScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,7 +67,7 @@ fun MainScreen(
         ) {
             when (state.currentDestination) {
                 MainDestination.HOME -> HomeContent(state)
-                MainDestination.TV -> UnderConstructionContent("TV")
+                MainDestination.TV -> TVScreen()
                 MainDestination.MOVIES -> UnderConstructionContent("Películas")
                 MainDestination.SERIES -> UnderConstructionContent("Series")
                 MainDestination.SETTINGS -> SettingsContent(
