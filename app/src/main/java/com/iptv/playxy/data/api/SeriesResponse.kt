@@ -1,11 +1,13 @@
 package com.iptv.playxy.data.api
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 /**
  * API response model for series
  * Fields match the JSON structure from the provider
  */
+@JsonClass(generateAdapter = true)
 data class SeriesResponse(
     @field:Json(name = "num") val num: Int?,
     @field:Json(name = "name") val name: String?,
