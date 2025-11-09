@@ -68,7 +68,7 @@ data class SeriesEntity(
     val releaseDate: String?,
     val rating: Float,
     val rating5Based: Float,
-    @TypeConverters(Converters::class)
+    @param:TypeConverters(Converters::class)
     val backdropPath: String,
     val youtubeTrailer: String?,
     val episodeRunTime: String?,

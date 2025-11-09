@@ -1,33 +1,32 @@
 package com.iptv.playxy.util
 
-import com.google.gson.TypeAdapter
-import com.google.gson.stream.JsonReader
-import com.google.gson.stream.JsonToken
-import com.google.gson.stream.JsonWriter
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
 
 /**
- * Gson TypeAdapter to convert any value to safe String
+ * Moshi JsonAdapter to convert any value to safe String
  * Handles null values by returning empty string or specified default
  */
-class SafeStringAdapter : TypeAdapter<String>() {
-    override fun write(out: JsonWriter, value: String?) {
-        out.value(value ?: "")
+class SafeStringAdapter : JsonAdapter<String>() {
+    override fun toJson(writer: JsonWriter, value: String?) {
+        writer.value(value ?: "")
     }
 
-    override fun read(`in`: JsonReader): String {
-        return when (`in`.peek()) {
-            JsonToken.NULL -> {
-                `in`.nextNull()
+    override fun fromJson(reader: JsonReader): String {
+        return when (reader.peek()) {
+            JsonReader.Token.NULL -> {
+                reader.nextNull<Any>()
                 ""
             }
-            JsonToken.STRING -> {
-                val value = `in`.nextString()
+            JsonReader.Token.STRING -> {
+                val value = reader.nextString()
                 if (value.equals("null", ignoreCase = true)) "" else value
             }
-            JsonToken.NUMBER -> `in`.nextDouble().toString()
-            JsonToken.BOOLEAN -> `in`.nextBoolean().toString()
+            JsonReader.Token.NUMBER -> reader.nextDouble().toString()
+            JsonReader.Token.BOOLEAN -> reader.nextBoolean().toString()
             else -> {
-                `in`.skipValue()
+                reader.skipValue()
                 ""
             }
         }

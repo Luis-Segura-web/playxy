@@ -1,28 +1,27 @@
 package com.iptv.playxy.util
 
-import com.google.gson.TypeAdapter
-import com.google.gson.stream.JsonReader
-import com.google.gson.stream.JsonToken
-import com.google.gson.stream.JsonWriter
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
 
 /**
- * Gson TypeAdapter to convert String/Int/null values to Float
+ * Moshi JsonAdapter to convert String/Int/null values to Float
  * Handles null values by returning 0f as default
  */
-class SafeFloatAdapter : TypeAdapter<Float>() {
-    override fun write(out: JsonWriter, value: Float?) {
-        out.value(value ?: 0f)
+class SafeFloatAdapter : JsonAdapter<Float>() {
+    override fun toJson(writer: JsonWriter, value: Float?) {
+        writer.value(value?.toDouble() ?: 0.0)
     }
 
-    override fun read(`in`: JsonReader): Float {
-        return when (`in`.peek()) {
-            JsonToken.NULL -> {
-                `in`.nextNull()
+    override fun fromJson(reader: JsonReader): Float {
+        return when (reader.peek()) {
+            JsonReader.Token.NULL -> {
+                reader.nextNull<Any>()
                 0f
             }
-            JsonToken.NUMBER -> `in`.nextDouble().toFloat()
-            JsonToken.STRING -> {
-                val value = `in`.nextString()
+            JsonReader.Token.NUMBER -> reader.nextDouble().toFloat()
+            JsonReader.Token.STRING -> {
+                val value = reader.nextString()
                 try {
                     value.toFloatOrNull() ?: 0f
                 } catch (e: Exception) {
@@ -30,7 +29,7 @@ class SafeFloatAdapter : TypeAdapter<Float>() {
                 }
             }
             else -> {
-                `in`.skipValue()
+                reader.skipValue()
                 0f
             }
         }

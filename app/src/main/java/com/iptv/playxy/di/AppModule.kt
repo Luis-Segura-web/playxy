@@ -3,8 +3,8 @@ package com.iptv.playxy.di
 import android.content.Context
 import androidx.room.Room
 import com.iptv.playxy.data.db.PlayxyDatabase
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -21,10 +21,10 @@ object AppModule {
     
     @Provides
     @Singleton
-    fun provideGson(): Gson {
-        return GsonBuilder()
-            .setLenient()
-            .create()
+    fun provideMoshi(): Moshi {
+        return Moshi.Builder()
+            .add(KotlinJsonAdapterFactory())
+            .build()
     }
     
     @Provides
@@ -51,7 +51,7 @@ object AppModule {
             PlayxyDatabase::class.java,
             "playxy_database"
         )
-        .fallbackToDestructiveMigration()
+        .fallbackToDestructiveMigration(true)
         .build()
     }
     

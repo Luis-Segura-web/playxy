@@ -1,9 +1,9 @@
 package com.iptv.playxy.data.api
 
-import com.google.gson.Gson
+import com.squareup.moshi.Moshi
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.converter.moshi.MoshiConverterFactory
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -13,7 +13,7 @@ import javax.inject.Singleton
 @Singleton
 class ApiServiceFactory @Inject constructor(
     private val okHttpClient: OkHttpClient,
-    private val gson: Gson
+    private val moshi: Moshi
 ) {
 
     /**
@@ -28,7 +28,7 @@ class ApiServiceFactory @Inject constructor(
         val retrofit = Retrofit.Builder()
             .baseUrl(formattedBaseUrl)
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create(gson))
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
 
         return retrofit.create(IptvApiService::class.java)

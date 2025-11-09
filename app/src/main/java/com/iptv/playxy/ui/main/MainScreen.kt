@@ -2,6 +2,7 @@ package com.iptv.playxy.ui.main
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -11,7 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.iptv.playxy.ui.MainDestination
 import com.iptv.playxy.ui.tv.TVScreen
 
@@ -222,7 +223,7 @@ fun SettingsContent(
             )
         ) {
             Icon(
-                imageVector = Icons.Default.Logout,
+                imageVector = Icons.AutoMirrored.Filled.Logout,
                 contentDescription = "Cerrar sesión"
             )
             Spacer(modifier = Modifier.width(8.dp))

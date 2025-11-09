@@ -1,28 +1,27 @@
 package com.iptv.playxy.util
 
-import com.google.gson.TypeAdapter
-import com.google.gson.stream.JsonReader
-import com.google.gson.stream.JsonToken
-import com.google.gson.stream.JsonWriter
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
 
 /**
- * Gson TypeAdapter to convert String/Int/null values to Int
+ * Moshi JsonAdapter to convert String/Int/null values to Int
  * Handles null values by returning 0 as default
  */
-class SafeIntAdapter : TypeAdapter<Int>() {
-    override fun write(out: JsonWriter, value: Int?) {
-        out.value(value ?: 0)
+class SafeIntAdapter : JsonAdapter<Int>() {
+    override fun toJson(writer: JsonWriter, value: Int?) {
+        writer.value(value ?: 0)
     }
 
-    override fun read(`in`: JsonReader): Int {
-        return when (`in`.peek()) {
-            JsonToken.NULL -> {
-                `in`.nextNull()
+    override fun fromJson(reader: JsonReader): Int {
+        return when (reader.peek()) {
+            JsonReader.Token.NULL -> {
+                reader.nextNull<Any>()
                 0
             }
-            JsonToken.NUMBER -> `in`.nextInt()
-            JsonToken.STRING -> {
-                val value = `in`.nextString()
+            JsonReader.Token.NUMBER -> reader.nextInt()
+            JsonReader.Token.STRING -> {
+                val value = reader.nextString()
                 try {
                     value.toIntOrNull() ?: 0
                 } catch (e: Exception) {
@@ -30,7 +29,7 @@ class SafeIntAdapter : TypeAdapter<Int>() {
                 }
             }
             else -> {
-                `in`.skipValue()
+                reader.skipValue()
                 0
             }
         }

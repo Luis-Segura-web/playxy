@@ -1,37 +1,36 @@
 package com.iptv.playxy.util
 
-import com.google.gson.TypeAdapter
-import com.google.gson.stream.JsonReader
-import com.google.gson.stream.JsonToken
-import com.google.gson.stream.JsonWriter
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
 
 /**
- * Gson TypeAdapter to convert String values "0"/"1" to Boolean
+ * Moshi JsonAdapter to convert String values "0"/"1" to Boolean
  * Handles null values by returning false as default
  */
-class StringToBooleanAdapter : TypeAdapter<Boolean>() {
-    override fun write(out: JsonWriter, value: Boolean?) {
-        out.value(value ?: false)
+class StringToBooleanAdapter : JsonAdapter<Boolean>() {
+    override fun toJson(writer: JsonWriter, value: Boolean?) {
+        writer.value(value ?: false)
     }
 
-    override fun read(`in`: JsonReader): Boolean {
-        return when (`in`.peek()) {
-            JsonToken.NULL -> {
-                `in`.nextNull()
+    override fun fromJson(reader: JsonReader): Boolean {
+        return when (reader.peek()) {
+            JsonReader.Token.NULL -> {
+                reader.nextNull<Any>()
                 false
             }
-            JsonToken.BOOLEAN -> `in`.nextBoolean()
-            JsonToken.STRING -> {
-                val value = `in`.nextString()
+            JsonReader.Token.BOOLEAN -> reader.nextBoolean()
+            JsonReader.Token.STRING -> {
+                val value = reader.nextString()
                 when {
                     value.equals("1", ignoreCase = true) -> true
                     value.equals("true", ignoreCase = true) -> true
                     else -> false
                 }
             }
-            JsonToken.NUMBER -> `in`.nextInt() != 0
+            JsonReader.Token.NUMBER -> reader.nextInt() != 0
             else -> {
-                `in`.skipValue()
+                reader.skipValue()
                 false
             }
         }

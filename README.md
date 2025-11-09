@@ -12,7 +12,7 @@ Aplicación IPTV desarrollada en Kotlin para dispositivos móviles Android en fo
 - **Soporte HTTP**: Permite conexiones no seguras según requerimientos de proveedores IPTV
 - **Interfaz moderna con Jetpack Compose**: UI declarativa y reactiva
 - **Arquitectura MVVM**: Separación clara de responsabilidades
-- **Manejo robusto de datos inconsistentes**: Adaptadores Gson personalizados
+- **Manejo robusto de datos inconsistentes**: Adaptadores Moshi personalizados
 
 ## 📱 Flujo de la Aplicación
 
@@ -114,7 +114,7 @@ com.iptv.playxy/
 - **Jetpack Compose**: UI moderna y declarativa
 - **Hilt**: Inyección de dependencias
 - **Retrofit + OkHttp**: Consumo de APIs
-- **Gson**: Serialización/Deserialización JSON con adaptadores personalizados
+- **Moshi**: Serialización/Deserialización JSON con adaptadores personalizados
 - **Room**: Base de datos local
 - **Navigation Compose**: Navegación entre pantallas
 - **Coroutines**: Programación asíncrona
@@ -179,7 +179,7 @@ La pestaña TV incluye una implementación completa con:
 
 ## Manejo de Datos
 
-### Adaptadores Gson Personalizados
+### Adaptadores Moshi Personalizados
 
 El sistema incluye adaptadores para manejar datos inconsistentes de la API:
 
