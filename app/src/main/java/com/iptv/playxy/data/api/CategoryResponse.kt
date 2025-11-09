@@ -7,7 +7,7 @@ import com.squareup.moshi.Json
  * Fields match the JSON structure from the provider
  */
 data class CategoryResponse(
-    @Json(name = "category_id") val categoryId: String?,
-    @Json(name = "category_name") val categoryName: String?,
-    @Json(name = "parent_id") val parentId: String?
+    @field:Json(name = "category_id") val categoryId: String?,
+    @field:Json(name = "category_name") val categoryName: String?,
+    @field:Json(name = "parent_id") val parentId: String?
 )
