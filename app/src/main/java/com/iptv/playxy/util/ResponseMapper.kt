@@ -69,11 +69,12 @@ object ResponseMapper {
         )
     }
     
-    fun toCategory(response: CategoryResponse): Category {
+    fun toCategory(response: CategoryResponse, orderIndex: Int = 0): Category {
         return Category(
             categoryId = response.categoryId.orEmpty(),
             categoryName = response.categoryName.orEmpty(),
-            parentId = response.parentId.orEmpty()
+            parentId = response.parentId.orEmpty(),
+            orderIndex = orderIndex
         )
     }
 }

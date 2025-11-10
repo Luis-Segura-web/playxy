@@ -81,7 +81,8 @@ data class CategoryEntity(
     @PrimaryKey val categoryId: String,
     val categoryName: String,
     val parentId: String,
-    val type: String // "live", "vod", or "series"
+    val type: String, // "live", "vod", or "series"
+    val orderIndex: Int = 0 // Preserve provider's order
 )
 
 @Entity(tableName = "cache_metadata")

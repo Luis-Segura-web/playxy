@@ -10,6 +10,8 @@ import com.iptv.playxy.data.repository.IptvRepository
 import com.iptv.playxy.domain.Category
 import com.iptv.playxy.domain.LiveStream
 import com.iptv.playxy.domain.PlayerState
+import com.iptv.playxy.domain.UserProfile
+import com.iptv.playxy.util.StreamUrlBuilder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,16 +44,29 @@ class TVViewModel @Inject constructor(
     private val _favoriteChannelIds = MutableStateFlow<Set<String>>(emptySet())
     val favoriteChannelIds: StateFlow<Set<String>> = _favoriteChannelIds.asStateFlow()
 
+    private val _userProfile = MutableStateFlow<UserProfile?>(null)
+    val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
+
     init {
+        loadUserProfile()
         loadCategories()
         loadFavoriteIds()
+    }
+
+    private fun loadUserProfile() {
+        viewModelScope.launch {
+            try {
+                _userProfile.value = repository.getProfile()
+            } catch (e: Exception) {
+                // Handle error
+            }
+        }
     }
 
     private fun loadCategories() {
         viewModelScope.launch {
             try {
                 val providerCategories = repository.getCategories("live")
-                    .sortedBy { it.categoryName }
 
                 val allCategories = buildList {
                     add(Category("all", "Todos", "0"))

@@ -120,21 +120,27 @@ class IptvRepository @Inject constructor(
         // Load live categories
         val liveResponse = apiService.getLiveCategories(username, password)
         if (liveResponse.isSuccessful) {
-            val categories = liveResponse.body()?.map { ResponseMapper.toCategory(it) } ?: emptyList()
+            val categories = liveResponse.body()?.mapIndexed { index, it ->
+                ResponseMapper.toCategory(it, index)
+            } ?: emptyList()
             categoryDao.insertAll(categories.map { EntityMapper.toEntity(it, "live") })
         }
         
         // Load VOD categories
         val vodResponse = apiService.getVodCategories(username, password)
         if (vodResponse.isSuccessful) {
-            val categories = vodResponse.body()?.map { ResponseMapper.toCategory(it) } ?: emptyList()
+            val categories = vodResponse.body()?.mapIndexed { index, it ->
+                ResponseMapper.toCategory(it, index)
+            } ?: emptyList()
             categoryDao.insertAll(categories.map { EntityMapper.toEntity(it, "vod") })
         }
         
         // Load series categories
         val seriesResponse = apiService.getSeriesCategories(username, password)
         if (seriesResponse.isSuccessful) {
-            val categories = seriesResponse.body()?.map { ResponseMapper.toCategory(it) } ?: emptyList()
+            val categories = seriesResponse.body()?.mapIndexed { index, it ->
+                ResponseMapper.toCategory(it, index)
+            } ?: emptyList()
             categoryDao.insertAll(categories.map { EntityMapper.toEntity(it, "series") })
         }
     }

@@ -83,10 +83,10 @@ interface SeriesDao {
 
 @Dao
 interface CategoryDao {
-    @Query("SELECT * FROM categories")
+    @Query("SELECT * FROM categories ORDER BY orderIndex ASC")
     suspend fun getAllCategories(): List<CategoryEntity>
     
-    @Query("SELECT * FROM categories WHERE type = :type")
+    @Query("SELECT * FROM categories WHERE type = :type ORDER BY orderIndex ASC")
     suspend fun getCategoriesByType(type: String): List<CategoryEntity>
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -98,9 +98,9 @@ interface CategoryDao {
 
 @Dao
 interface CacheMetadataDao {
-    @Query("SELECT * FROM cache_metadata WHERE key = :key")
-    suspend fun getCacheMetadata(key: String): CacheMetadata?
-    
+    @Query("SELECT * FROM cache_metadata WHERE `key` = :key")
+    suspend fun getCacheMetadata(`key`: String): CacheMetadata?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCacheMetadata(metadata: CacheMetadata)
     

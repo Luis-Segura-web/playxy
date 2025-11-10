@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.iptv.playxy.ui.player.FullscreenPlayerActivity
 import com.iptv.playxy.ui.tv.components.*
+import com.iptv.playxy.util.StreamUrlBuilder
 
 @Composable
 fun TVScreen(
@@ -21,12 +22,22 @@ fun TVScreen(
     val categories by viewModel.categories.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val filteredChannels by viewModel.filteredChannels.collectAsState()
+    val userProfile by viewModel.userProfile.collectAsState()
     val favoriteChannelIds by viewModel.favoriteChannelIds.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // 1. Mini-Player (Only shown if currentChannel is not null)
+        val channel = currentChannel
+        val profile = userProfile
+        val streamUrl = if (channel != null && profile != null) {
+            StreamUrlBuilder.buildLiveStreamUrl(profile, channel)
+        } else {
+            ""
+        }
+
         MiniPlayerView(
             channel = currentChannel,
+            streamUrl = streamUrl,
             state = playerState,
             onClose = { viewModel.closePlayer() },
             onPlayPause = { viewModel.togglePlayPause() },
@@ -34,12 +45,15 @@ fun TVScreen(
             onPrev = { viewModel.playPreviousChannel() },
             onFullscreen = {
                 currentChannel?.let { channel ->
-                    val intent = FullscreenPlayerActivity.createIntent(
-                        context = context,
-                        streamUrl = channel.directSource ?: "",
-                        channelName = channel.name
-                    )
-                    context.startActivity(intent)
+                    userProfile?.let { profile ->
+                        val fullscreenUrl = StreamUrlBuilder.buildLiveStreamUrl(profile, channel)
+                        val intent = FullscreenPlayerActivity.createIntent(
+                            context = context,
+                            streamUrl = fullscreenUrl,
+                            channelName = channel.name
+                        )
+                        context.startActivity(intent)
+                    }
                 }
             }
         )

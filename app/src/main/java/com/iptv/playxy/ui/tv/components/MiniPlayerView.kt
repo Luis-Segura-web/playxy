@@ -14,6 +14,7 @@ import com.iptv.playxy.domain.PlayerState
 @Composable
 fun MiniPlayerView(
     channel: LiveStream?,
+    streamUrl: String,
     state: PlayerState,
     onClose: () -> Unit,
     onPlayPause: () -> Unit,
@@ -31,7 +32,7 @@ fun MiniPlayerView(
     ) {
         // Video player
         VLCPlayer(
-            url = channel.directSource ?: "",
+            url = streamUrl,
             modifier = Modifier.fillMaxSize(),
             onBuffering = { /* Buffering state is already managed by state parameter */ },
             onPlaying = { /* Playing state is already managed by state parameter */ },

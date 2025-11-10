@@ -150,7 +150,8 @@ object EntityMapper {
             categoryId = category.categoryId,
             categoryName = category.categoryName,
             parentId = category.parentId,
-            type = type
+            type = type,
+            orderIndex = category.orderIndex
         )
     }
     
@@ -158,7 +159,8 @@ object EntityMapper {
         return Category(
             categoryId = entity.categoryId,
             categoryName = entity.categoryName,
-            parentId = entity.parentId
+            parentId = entity.parentId,
+            orderIndex = entity.orderIndex
         )
     }
     
