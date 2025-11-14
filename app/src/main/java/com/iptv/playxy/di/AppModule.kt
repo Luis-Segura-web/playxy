@@ -62,4 +62,28 @@ object AppModule {
     @Provides
     @Singleton
     fun provideRecentChannelDao(database: PlayxyDatabase) = database.recentChannelDao()
+
+    @Provides
+    @Singleton
+    fun provideFavoriteVodDao(database: PlayxyDatabase) = database.favoriteVodDao()
+
+    @Provides
+    @Singleton
+    fun provideRecentVodDao(database: PlayxyDatabase) = database.recentVodDao()
+
+    @Provides
+    @Singleton
+    fun provideFavoriteSeriesDao(database: PlayxyDatabase) = database.favoriteSeriesDao()
+
+    @Provides
+    @Singleton
+    fun provideRecentSeriesDao(database: PlayxyDatabase) = database.recentSeriesDao()
+
+    @Provides
+    @Singleton
+    fun provideMovieProgressDao(database: PlayxyDatabase) = database.movieProgressDao()
+
+    @Provides
+    @Singleton
+    fun provideSeriesProgressDao(database: PlayxyDatabase) = database.seriesProgressDao()
 }

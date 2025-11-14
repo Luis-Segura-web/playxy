@@ -143,3 +143,88 @@ interface RecentChannelDao {
     @Query("DELETE FROM recent_channels")
     suspend fun deleteAll()
 }
+
+@Dao
+interface FavoriteVodDao {
+    @Query("SELECT * FROM favorite_vod ORDER BY timestamp DESC")
+    suspend fun getAllFavorites(): List<FavoriteVodEntity>
+
+    @Query("SELECT * FROM favorite_vod WHERE streamId = :streamId")
+    suspend fun getFavorite(streamId: String): FavoriteVodEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFavorite(favorite: FavoriteVodEntity)
+
+    @Query("DELETE FROM favorite_vod WHERE streamId = :streamId")
+    suspend fun deleteFavorite(streamId: String)
+}
+
+@Dao
+interface RecentVodDao {
+    @Query("SELECT * FROM recent_vod ORDER BY timestamp DESC LIMIT 50")
+    suspend fun getRecent(): List<RecentVodEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecent(recent: RecentVodEntity)
+
+    @Query("DELETE FROM recent_vod WHERE streamId = :streamId")
+    suspend fun deleteByStream(streamId: String)
+}
+
+@Dao
+interface FavoriteSeriesDao {
+    @Query("SELECT * FROM favorite_series ORDER BY timestamp DESC")
+    suspend fun getAllFavorites(): List<FavoriteSeriesEntity>
+
+    @Query("SELECT * FROM favorite_series WHERE seriesId = :seriesId")
+    suspend fun getFavorite(seriesId: String): FavoriteSeriesEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFavorite(favorite: FavoriteSeriesEntity)
+
+    @Query("DELETE FROM favorite_series WHERE seriesId = :seriesId")
+    suspend fun deleteFavorite(seriesId: String)
+}
+
+@Dao
+interface RecentSeriesDao {
+    @Query("SELECT * FROM recent_series ORDER BY timestamp DESC LIMIT 50")
+    suspend fun getRecent(): List<RecentSeriesEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecent(recent: RecentSeriesEntity)
+
+    @Query("DELETE FROM recent_series WHERE seriesId = :seriesId")
+    suspend fun deleteBySeries(seriesId: String)
+}
+
+@Dao
+interface MovieProgressDao {
+    @Query("SELECT * FROM movie_progress WHERE streamId = :streamId")
+    suspend fun getProgress(streamId: String): MovieProgressEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveProgress(progress: MovieProgressEntity)
+
+    @Query("DELETE FROM movie_progress WHERE streamId = :streamId")
+    suspend fun deleteProgress(streamId: String)
+
+    @Query("DELETE FROM movie_progress")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface SeriesProgressDao {
+    @Query("SELECT * FROM series_progress WHERE seriesId = :seriesId")
+    suspend fun getProgress(seriesId: String): SeriesProgressEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveProgress(progress: SeriesProgressEntity)
+
+    @Query("DELETE FROM series_progress WHERE seriesId = :seriesId")
+    suspend fun deleteProgress(seriesId: String)
+
+    @Query("DELETE FROM series_progress")
+    suspend fun deleteAll()
+}
+

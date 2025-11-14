@@ -203,4 +203,73 @@ class IptvRepository @Inject constructor(
     suspend fun getAllCategories(): List<Category> {
         return categoryDao.getAllCategories().map { EntityMapper.categoryToDomain(it) }
     }
+
+    /**
+     * Get series information including seasons and episodes
+     * @param seriesId The series ID to fetch info for
+     * @return SeriesInfo with seasons and episodes, or null if error
+     */
+    suspend fun getSeriesInfo(seriesId: String): SeriesInfo? {
+        return try {
+            // Get the user profile to obtain credentials and base URL
+            val profile = userProfileDao.getProfile() ?: return null
+
+            // Get the series from cache to have base info
+            val seriesEntity = seriesDao.getAllSeries().find { it.seriesId == seriesId }
+            val series = seriesEntity?.let { EntityMapper.seriesToDomain(it) } ?: return null
+
+            // Create API service with the user's base URL
+            val apiService = apiServiceFactory.createService(profile.url)
+
+            // Fetch series info from API
+            val response = apiService.getSeriesInfo(
+                username = profile.username,
+                password = profile.password,
+                seriesId = seriesId
+            )
+
+            if (response.isSuccessful && response.body() != null) {
+                ResponseMapper.toSeriesInfo(response.body()!!, series)
+            } else {
+                // Return empty series info if API call fails
+                SeriesInfo(
+                    seasons = emptyList(),
+                    info = series,
+                    episodesBySeason = emptyMap()
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * Get detailed VOD information from the provider
+     */
+    suspend fun getVodInfo(vodId: String): VodInfo? {
+        return try {
+            // Get the user profile to obtain credentials and base URL
+            val profile = userProfileDao.getProfile() ?: return null
+
+            // Create API service with the user's base URL
+            val apiService = apiServiceFactory.createService(profile.url)
+
+            // Fetch VOD info from API
+            val response = apiService.getVodInfo(
+                username = profile.username,
+                password = profile.password,
+                vodId = vodId
+            )
+
+            if (response.isSuccessful && response.body() != null) {
+                ResponseMapper.toVodInfo(response.body()!!)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 }

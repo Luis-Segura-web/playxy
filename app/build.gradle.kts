@@ -52,6 +52,14 @@ android {
     buildToolsVersion = "36.1.0"
 }
 
+// Configuración KSP (sustituye cualquier necesidad previa de kapt)
+ksp {
+    // Exportar esquemas de Room para inspección/migraciones
+    arg("room.schemaLocation", file("$projectDir/schemas").path)
+    arg("room.incremental", "true")
+    arg("room.generateKotlin", "true")
+}
+
 dependencies {
     // Core Android
     implementation(libs.androidx.core.ktx)
@@ -108,9 +116,11 @@ dependencies {
     // Coil for image loading
     implementation(libs.coil.compose)
     
-    // VLC Player for Android
-    implementation(libs.vlc)
-    
+    // Media3 (ExoPlayer) for video playback
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.exoplayer.hls)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

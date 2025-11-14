@@ -151,7 +151,7 @@ object EntityMapper {
             categoryName = category.categoryName,
             parentId = category.parentId,
             type = type,
-            orderIndex = category.orderIndex
+            orderIndex = 0
         )
     }
     
@@ -159,11 +159,10 @@ object EntityMapper {
         return Category(
             categoryId = entity.categoryId,
             categoryName = entity.categoryName,
-            parentId = entity.parentId,
-            orderIndex = entity.orderIndex
+            parentId = entity.parentId
         )
     }
-    
+
     // FavoriteChannel mappings
     fun toEntity(favorite: FavoriteChannel): FavoriteChannelEntity {
         return FavoriteChannelEntity(

@@ -13,9 +13,15 @@ import androidx.room.TypeConverters
         CategoryEntity::class,
         CacheMetadata::class,
         FavoriteChannelEntity::class,
-        RecentChannelEntity::class
+        RecentChannelEntity::class,
+        FavoriteVodEntity::class,
+        RecentVodEntity::class,
+        FavoriteSeriesEntity::class,
+        RecentSeriesEntity::class,
+        MovieProgressEntity::class,
+        SeriesProgressEntity::class
     ],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,4 +34,10 @@ abstract class PlayxyDatabase : RoomDatabase() {
     abstract fun cacheMetadataDao(): CacheMetadataDao
     abstract fun favoriteChannelDao(): FavoriteChannelDao
     abstract fun recentChannelDao(): RecentChannelDao
+    abstract fun favoriteVodDao(): FavoriteVodDao
+    abstract fun recentVodDao(): RecentVodDao
+    abstract fun favoriteSeriesDao(): FavoriteSeriesDao
+    abstract fun recentSeriesDao(): RecentSeriesDao
+    abstract fun movieProgressDao(): MovieProgressDao
+    abstract fun seriesProgressDao(): SeriesProgressDao
 }

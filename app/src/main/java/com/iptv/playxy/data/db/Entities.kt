@@ -103,3 +103,50 @@ data class RecentChannelEntity(
     val channelId: String,
     val timestamp: Long
 )
+
+@Entity(tableName = "favorite_vod")
+data class FavoriteVodEntity(
+    @PrimaryKey val streamId: String,
+    val timestamp: Long
+)
+
+@Entity(tableName = "recent_vod")
+data class RecentVodEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val streamId: String,
+    val timestamp: Long
+)
+
+@Entity(tableName = "favorite_series")
+data class FavoriteSeriesEntity(
+    @PrimaryKey val seriesId: String,
+    val timestamp: Long
+)
+
+@Entity(tableName = "recent_series")
+data class RecentSeriesEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val seriesId: String,
+    val timestamp: Long
+)
+
+// Progreso de reproducción de películas
+@Entity(tableName = "movie_progress")
+data class MovieProgressEntity(
+    @PrimaryKey val streamId: String,
+    val positionMs: Long, // Posición en milisegundos
+    val durationMs: Long, // Duración total
+    val timestamp: Long // Última actualización
+)
+
+// Progreso de reproducción de series (último episodio visto)
+@Entity(tableName = "series_progress")
+data class SeriesProgressEntity(
+    @PrimaryKey val seriesId: String,
+    val lastEpisodeId: String,
+    val lastSeasonNumber: Int,
+    val lastEpisodeNumber: Int,
+    val positionMs: Long, // Posición en el episodio
+    val timestamp: Long // Última actualización
+)
+

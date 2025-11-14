@@ -1,5 +1,6 @@
 package com.iptv.playxy.ui.tv
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.playxy.data.db.FavoriteChannelDao
@@ -9,9 +10,9 @@ import com.iptv.playxy.data.db.RecentChannelDao
 import com.iptv.playxy.data.repository.IptvRepository
 import com.iptv.playxy.domain.Category
 import com.iptv.playxy.domain.LiveStream
-import com.iptv.playxy.domain.PlayerState
 import com.iptv.playxy.domain.UserProfile
 import com.iptv.playxy.util.StreamUrlBuilder
+// import com.iptv.playxy.ui.player.PlayerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,8 +27,6 @@ class TVViewModel @Inject constructor(
     private val recentChannelDao: RecentChannelDao
 ) : ViewModel() {
 
-    private val _playerState = MutableStateFlow<PlayerState>(PlayerState.Idle)
-    val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
 
     private val _currentChannel = MutableStateFlow<LiveStream?>(null)
     val currentChannel: StateFlow<LiveStream?> = _currentChannel.asStateFlow()
@@ -49,8 +48,11 @@ class TVViewModel @Inject constructor(
 
     init {
         loadUserProfile()
-        loadCategories()
         loadFavoriteIds()
+    }
+
+    fun initialize(context: Context) {
+        loadCategories(context)
     }
 
     private fun loadUserProfile() {
@@ -63,10 +65,21 @@ class TVViewModel @Inject constructor(
         }
     }
 
-    private fun loadCategories() {
+    private fun normalizeCategories(list: List<Category>, defaultAllName: String): List<Category> {
+        // Unificar nombres 'Todas'/'Todos' y quitar duplicados por id
+        val normalized = list.map {
+            if (it.categoryName.equals("Todos", ignoreCase = true) || it.categoryName.equals("Todas", ignoreCase = true))
+                it.copy(categoryName = defaultAllName)
+            else it
+        }
+        return normalized.distinctBy { it.categoryId to it.categoryName.lowercase() }
+    }
+
+    private fun loadCategories(context: Context) {
         viewModelScope.launch {
             try {
-                val providerCategories = repository.getCategories("live")
+                val providerCategoriesRaw = repository.getCategories("live")
+                val providerCategories = normalizeCategories(providerCategoriesRaw, "Todos")
 
                 val allCategories = buildList {
                     add(Category("all", "Todos", "0"))
@@ -76,10 +89,10 @@ class TVViewModel @Inject constructor(
                 }
 
                 _categories.value = allCategories
-                
-                // Select "Todos" by default
+
+                // Select "Todos" by default and play first channel if none is playing
                 if (allCategories.isNotEmpty()) {
-                    selectCategory(allCategories[0])
+                    selectCategory(allCategories[0], context)
                 }
             } catch (e: Exception) {
                 // Handle error
@@ -98,24 +111,27 @@ class TVViewModel @Inject constructor(
         }
     }
 
-    fun selectCategory(category: Category) {
-        _selectedCategory.value = category
-        filterChannels(category)
+    fun selectCategory(category: Category, context: Context) {
+        viewModelScope.launch {
+            _selectedCategory.value = category
+            filterChannels(category)
+
+            // Solo filtra los canales, NO reproduce automáticamente
+            // El usuario debe hacer clic en un canal para reproducirlo
+        }
     }
 
-    private fun filterChannels(category: Category) {
-        viewModelScope.launch {
-            try {
-                val channels = when (category.categoryId) {
-                    "all" -> repository.getLiveStreams().distinctBy { it.streamId }
-                    "favorites" -> loadFavoriteChannels()
-                    "recents" -> loadRecentChannels()
-                    else -> repository.getLiveStreamsByCategory(category.categoryId)
-                }
-                _filteredChannels.value = channels
-            } catch (e: Exception) {
-                _filteredChannels.value = emptyList()
+    private suspend fun filterChannels(category: Category) {
+        try {
+            val channels = when (category.categoryId) {
+                "all" -> repository.getLiveStreams().distinctBy { it.streamId }
+                "favorites" -> loadFavoriteChannels()
+                "recents" -> loadRecentChannels()
+                else -> repository.getLiveStreamsByCategory(category.categoryId)
             }
+            _filteredChannels.value = channels
+        } catch (e: Exception) {
+            _filteredChannels.value = emptyList()
         }
     }
 
@@ -134,11 +150,24 @@ class TVViewModel @Inject constructor(
         }.distinctBy { it.streamId }
     }
 
-    fun playChannel(channel: LiveStream) {
+    fun playChannel(context: Context, channel: LiveStream) {
         viewModelScope.launch {
             _currentChannel.value = channel
-            _playerState.value = PlayerState.Playing
-            
+
+            // Get user profile to build stream URL
+            val profile = _userProfile.value
+            if (profile != null) {
+                val streamUrl = StreamUrlBuilder.buildLiveStreamUrl(profile, channel)
+
+                // TODO: Use PlayerManager to play the channel
+                // PlayerManager.changeMedia(
+                //     context = context,
+                //     url = streamUrl,
+                //     title = channel.name,
+                //     type = PlayerManager.MediaType.LiveTV
+                // )
+            }
+
             // Add to recents
             try {
                 recentChannelDao.insertRecent(
@@ -185,44 +214,52 @@ class TVViewModel @Inject constructor(
 
     fun closePlayer() {
         _currentChannel.value = null
-        _playerState.value = PlayerState.Idle
+        // TODO: PlayerManager.stop()
     }
 
-    fun togglePlayPause() {
-        _playerState.value = when (_playerState.value) {
-            is PlayerState.Playing -> PlayerState.Paused
-            is PlayerState.Paused -> PlayerState.Playing
-            else -> _playerState.value
-        }
+    fun stopPlayback() {
+        _currentChannel.value = null
     }
 
     fun playNextChannel() {
-        val currentChannelValue = _currentChannel.value ?: return
         val channels = _filteredChannels.value
-        val currentIndex = channels.indexOfFirst { it.streamId == currentChannelValue.streamId }
-        if (currentIndex != -1 && currentIndex < channels.size - 1) {
-            playChannel(channels[currentIndex + 1])
+        val current = _currentChannel.value
+        if (current != null && channels.isNotEmpty()) {
+            val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
+            if (currentIndex != -1 && currentIndex < channels.size - 1) {
+                _currentChannel.value = channels[currentIndex + 1]
+            }
         }
     }
 
     fun playPreviousChannel() {
-        val currentChannelValue = _currentChannel.value ?: return
         val channels = _filteredChannels.value
-        val currentIndex = channels.indexOfFirst { it.streamId == currentChannelValue.streamId }
-        if (currentIndex > 0) {
-            playChannel(channels[currentIndex - 1])
+        val current = _currentChannel.value
+        if (current != null && channels.isNotEmpty()) {
+            val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
+            if (currentIndex > 0) {
+                _currentChannel.value = channels[currentIndex - 1]
+            }
         }
     }
 
-    fun onBuffering() {
-        _playerState.value = PlayerState.Buffering
+    fun hasNextChannel(): Boolean {
+        val channels = _filteredChannels.value
+        val current = _currentChannel.value
+        if (current != null && channels.isNotEmpty()) {
+            val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
+            return currentIndex != -1 && currentIndex < channels.size - 1
+        }
+        return false
     }
 
-    fun onPlaying() {
-        _playerState.value = PlayerState.Playing
-    }
-
-    fun onError(message: String) {
-        _playerState.value = PlayerState.Error(message)
+    fun hasPreviousChannel(): Boolean {
+        val channels = _filteredChannels.value
+        val current = _currentChannel.value
+        if (current != null && channels.isNotEmpty()) {
+            val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
+            return currentIndex > 0
+        }
+        return false
     }
 }

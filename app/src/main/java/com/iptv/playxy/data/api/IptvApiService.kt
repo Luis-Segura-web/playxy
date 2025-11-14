@@ -82,6 +82,34 @@ interface IptvApiService {
     ): Response<List<CategoryResponse>>
     
     /**
+     * Get series info with seasons and episodes
+     * @param username User's username
+     * @param password User's password
+     * @param seriesId Series ID to fetch info for
+     */
+    @GET("player_api.php")
+    suspend fun getSeriesInfo(
+        @Query("username") username: String,
+        @Query("password") password: String,
+        @Query("action") action: String = "get_series_info",
+        @Query("series_id") seriesId: String
+    ): Response<SeriesInfoResponse>
+
+    /**
+     * Get detailed VOD information
+     * @param username User's username
+     * @param password User's password
+     * @param vodId VOD stream ID
+     */
+    @GET("player_api.php")
+    suspend fun getVodInfo(
+        @Query("username") username: String,
+        @Query("password") password: String,
+        @Query("action") action: String = "get_vod_info",
+        @Query("vod_id") vodId: String
+    ): Response<VodInfoResponse>
+
+    /**
      * Validate user credentials
      * @param username User's username
      * @param password User's password

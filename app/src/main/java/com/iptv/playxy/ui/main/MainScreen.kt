@@ -13,18 +13,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.MainDestination
 import com.iptv.playxy.ui.tv.TVScreen
+import com.iptv.playxy.ui.movies.MoviesScreen
+import com.iptv.playxy.ui.series.SeriesScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel: MainViewModel = hiltViewModel(),
     onNavigateToLogin: () -> Unit,
-    onNavigateToLoading: () -> Unit
+    onNavigateToLoading: () -> Unit,
+    onNavigateToMovieDetail: (String, String) -> Unit,
+    onNavigateToSeriesDetail: (String, String) -> Unit
 ) {
     val state by viewModel.state.collectAsState()
-    
+    val isFullscreen by LocalFullscreenState.current
+
     LaunchedEffect(state.isLoggingOut) {
         if (state.isLoggingOut) {
             onNavigateToLogin()
@@ -33,30 +39,36 @@ fun MainScreen(
     
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(state.currentDestination.title) }
-            )
+            // Hide topBar when in fullscreen
+            if (!isFullscreen) {
+                TopAppBar(
+                    title = { Text(state.currentDestination.title) }
+                )
+            }
         },
         bottomBar = {
-            NavigationBar {
-                MainDestination.values().forEach { destination ->
-                    NavigationBarItem(
-                        icon = {
-                            Icon(
-                                imageVector = when (destination) {
-                                    MainDestination.HOME -> Icons.Default.Home
-                                    MainDestination.TV -> Icons.Default.Tv
-                                    MainDestination.MOVIES -> Icons.Default.Movie
-                                    MainDestination.SERIES -> Icons.Default.VideoLibrary
-                                    MainDestination.SETTINGS -> Icons.Default.Settings
-                                },
-                                contentDescription = destination.title
-                            )
-                        },
-                        label = { Text(destination.title) },
-                        selected = state.currentDestination == destination,
-                        onClick = { viewModel.onDestinationChange(destination) }
-                    )
+            // Hide bottomBar when in fullscreen
+            if (!isFullscreen) {
+                NavigationBar {
+                    MainDestination.entries.forEach { destination ->
+                        NavigationBarItem(
+                            icon = {
+                                Icon(
+                                    imageVector = when (destination) {
+                                        MainDestination.HOME -> Icons.Default.Home
+                                        MainDestination.TV -> Icons.Default.Tv
+                                        MainDestination.MOVIES -> Icons.Default.Movie
+                                        MainDestination.SERIES -> Icons.Default.VideoLibrary
+                                        MainDestination.SETTINGS -> Icons.Default.Settings
+                                    },
+                                    contentDescription = destination.title
+                                )
+                            },
+                            label = { Text(destination.title) },
+                            selected = state.currentDestination == destination,
+                            onClick = { viewModel.onDestinationChange(destination) }
+                        )
+                    }
                 }
             }
         }
@@ -64,13 +76,28 @@ fun MainScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .then(
+                    // Only apply padding when not in fullscreen
+                    if (!isFullscreen) {
+                        Modifier.padding(paddingValues)
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             when (state.currentDestination) {
                 MainDestination.HOME -> HomeContent(state)
                 MainDestination.TV -> TVScreen()
-                MainDestination.MOVIES -> UnderConstructionContent("Películas")
-                MainDestination.SERIES -> UnderConstructionContent("Series")
+                MainDestination.MOVIES -> MoviesScreen(
+                    onMovieClick = { movie ->
+                        onNavigateToMovieDetail(movie.streamId, movie.categoryId)
+                    }
+                )
+                MainDestination.SERIES -> SeriesScreen(
+                    onSeriesClick = { series ->
+                        onNavigateToSeriesDetail(series.seriesId, series.categoryId)
+                    }
+                )
                 MainDestination.SETTINGS -> SettingsContent(
                     onLogout = viewModel::onLogout,
                     onForceReload = {

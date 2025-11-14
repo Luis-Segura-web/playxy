@@ -7,29 +7,59 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.iptv.playxy.data.repository.IptvRepository
+import com.iptv.playxy.domain.VodStream
+import com.iptv.playxy.ui.LocalFullscreenState
+import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.Routes
 import com.iptv.playxy.ui.loading.LoadingScreen
 import com.iptv.playxy.ui.login.LoginScreen
 import com.iptv.playxy.ui.main.MainScreen
+import com.iptv.playxy.ui.movies.MovieDetailScreen
+import com.iptv.playxy.ui.series.SeriesDetailScreen
 import com.iptv.playxy.ui.splash.SplashScreen
 import com.iptv.playxy.ui.theme.PlayxyTheme
+import com.iptv.playxy.ui.player.PlayerManager
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var repository: IptvRepository
+
+    @Inject
+    lateinit var playerManager: PlayerManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val isFullscreen = remember { mutableStateOf(false) }
+
             PlayxyTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                CompositionLocalProvider(
+                    LocalFullscreenState provides isFullscreen,
+                    LocalPlayerManager provides playerManager
                 ) {
-                    PlayxyNavigation()
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        PlayxyNavigation(repository)
+                    }
                 }
             }
         }
@@ -37,9 +67,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun PlayxyNavigation() {
+fun PlayxyNavigation(repository: IptvRepository) {
     val navController = rememberNavController()
-    
+    val scope = rememberCoroutineScope()
+
     NavHost(
         navController = navController,
         startDestination = Routes.SPLASH
@@ -90,7 +121,60 @@ fun PlayxyNavigation() {
                     navController.navigate(Routes.LOADING) {
                         popUpTo(Routes.MAIN) { inclusive = false }
                     }
+                },
+                onNavigateToMovieDetail = { streamId, categoryId ->
+                    navController.navigate(Routes.movieDetail(streamId, categoryId))
+                },
+                onNavigateToSeriesDetail = { seriesId, categoryId ->
+                    navController.navigate(Routes.seriesDetail(seriesId, categoryId))
                 }
+            )
+        }
+
+        composable(
+            route = Routes.MOVIE_DETAIL,
+            arguments = listOf(
+                navArgument("streamId") { type = NavType.StringType },
+                navArgument("categoryId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val streamId = backStackEntry.arguments?.getString("streamId") ?: ""
+            val categoryId = backStackEntry.arguments?.getString("categoryId") ?: ""
+
+            val movie = remember { mutableStateOf<VodStream?>(null) }
+
+            LaunchedEffect(streamId, categoryId) {
+                scope.launch {
+                    val movies = repository.getVodStreamsByCategory(categoryId)
+                    movie.value = movies.find { it.streamId == streamId }
+                }
+            }
+
+            movie.value?.let { vodStream ->
+                MovieDetailScreen(
+                    movie = vodStream,
+                    onBackClick = { navController.popBackStack() },
+                    onPlayClick = { movie ->
+                        // TODO: Implement player navigation
+                    }
+                )
+            }
+        }
+
+        composable(
+            route = Routes.SERIES_DETAIL,
+            arguments = listOf(
+                navArgument("seriesId") { type = NavType.StringType },
+                navArgument("categoryId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val seriesId = backStackEntry.arguments?.getString("seriesId") ?: ""
+            val categoryId = backStackEntry.arguments?.getString("categoryId") ?: ""
+
+            SeriesDetailScreen(
+                seriesId = seriesId,
+                categoryId = categoryId,
+                onBackClick = { navController.popBackStack() }
             )
         }
     }

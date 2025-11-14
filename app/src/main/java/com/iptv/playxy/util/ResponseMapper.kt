@@ -4,10 +4,20 @@ import com.iptv.playxy.data.api.CategoryResponse
 import com.iptv.playxy.data.api.LiveStreamResponse
 import com.iptv.playxy.data.api.SeriesResponse
 import com.iptv.playxy.data.api.VodStreamResponse
+import com.iptv.playxy.data.api.SeriesInfoResponse
+import com.iptv.playxy.data.api.SeasonResponse
+import com.iptv.playxy.data.api.EpisodeResponse
+import com.iptv.playxy.data.api.EpisodeInfoResponse
+import com.iptv.playxy.data.api.VodInfoResponse
 import com.iptv.playxy.domain.Category
 import com.iptv.playxy.domain.LiveStream
 import com.iptv.playxy.domain.Series
 import com.iptv.playxy.domain.VodStream
+import com.iptv.playxy.domain.SeriesInfo
+import com.iptv.playxy.domain.Season
+import com.iptv.playxy.domain.Episode
+import com.iptv.playxy.domain.EpisodeInfo
+import com.iptv.playxy.domain.VodInfo
 
 /**
  * Mapper object to convert API response models to domain models
@@ -73,8 +83,88 @@ object ResponseMapper {
         return Category(
             categoryId = response.categoryId.orEmpty(),
             categoryName = response.categoryName.orEmpty(),
-            parentId = response.parentId.orEmpty(),
-            orderIndex = orderIndex
+            parentId = response.parentId.orEmpty()
+        )
+    }
+
+    fun toSeriesInfo(response: SeriesInfoResponse, originalSeries: Series): SeriesInfo {
+        val seasons = response.seasons?.map { toSeason(it) }?.sortedBy { it.seasonNumber } ?: emptyList()
+        val episodes = response.episodes ?: emptyMap()
+
+        return SeriesInfo(
+            seasons = seasons,
+            info = originalSeries,
+            episodesBySeason = episodes.mapValues { (_, episodeList) ->
+                episodeList.map { toEpisode(it) }.sortedBy { it.episodeNum }
+            }
+        )
+    }
+
+    fun toSeason(response: SeasonResponse): Season {
+        return Season(
+            seasonNumber = response.seasonNumber?.toIntOrNull() ?: 0,
+            name = response.name ?: "Temporada ${response.seasonNumber ?: "?"}",
+            episodeCount = response.episodeCount?.toIntOrNull() ?: 0,
+            cover = response.cover ?: response.coverBig,
+            airDate = response.airDate
+        )
+    }
+
+    fun toEpisode(response: EpisodeResponse): Episode {
+        return Episode(
+            id = response.id.orEmpty(),
+            episodeNum = response.episodeNum?.toIntOrNull() ?: 0,
+            title = response.title ?: "Episodio ${response.episodeNum ?: "?"}",
+            containerExtension = response.containerExtension.orEmpty(),
+            info = response.info?.let { toEpisodeInfo(it) },
+            customSid = response.customSid,
+            added = response.added,
+            season = response.season?.toIntOrNull() ?: 0,
+            directSource = response.directSource
+        )
+    }
+
+    fun toEpisodeInfo(response: EpisodeInfoResponse): EpisodeInfo {
+        return EpisodeInfo(
+            tmdbId = response.tmdbId,
+            releaseDate = response.releaseDate,
+            plot = response.plot,
+            duration = response.duration ?: response.durationSecs?.let {
+                val seconds = it.toIntOrNull() ?: 0
+                "${seconds / 60} min"
+            },
+            rating = response.rating?.toFloatOrNull() ?: 0f,
+            cover = response.cover ?: response.coverBig ?: response.movieImage
+        )
+    }
+
+    fun toVodInfo(response: VodInfoResponse): VodInfo? {
+        val info = response.info ?: return null
+        return VodInfo(
+            tmdbId = info.tmdbId,
+            name = info.name ?: "",
+            originalName = info.originalName,
+            coverBig = info.coverBig,
+            movieImage = info.movieImage,
+            releaseDate = info.releaseDate,
+            duration = info.duration,
+            youtubeTrailer = info.youtubeTrailer,
+            director = info.director,
+            actors = info.actors,
+            cast = info.cast,
+            description = info.description,
+            plot = info.plot,
+            age = info.age,
+            mpaaRating = info.mpaaRating,
+            rating = info.rating,
+            rating5Based = info.rating5Based,
+            country = info.country,
+            genre = info.genre,
+            backdropPath = info.backdropPath,
+            durationSecs = info.durationSecs,
+            video = info.video,
+            audio = info.audio,
+            bitrate = info.bitrate
         )
     }
 }
