@@ -1,4 +1,3 @@
-@file:androidx.media3.common.util.UnstableApi
 
 package com.iptv.playxy.ui.player
 
@@ -22,9 +21,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -32,7 +28,6 @@ import kotlinx.coroutines.launch
  * Mini player for Series Episodes (Portrait mode)
  * Controls: Previous Episode, Pause/Play, Next Episode, Close, Fullscreen
  */
-@kotlin.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun SeriesMiniPlayer(
     streamUrl: String,
@@ -48,65 +43,19 @@ fun SeriesMiniPlayer(
     hasPrevious: Boolean = true,
     hasNext: Boolean = true
 ) {
-    val scope = rememberCoroutineScope()
-    var isPlaying by remember { mutableStateOf(false) }
+    val uiState = rememberPlayerUiState(playerManager)
     var showControls by remember { mutableStateOf(true) }
-    var hasError by remember { mutableStateOf(false) }
     var showTrackSelector by remember { mutableStateOf(false) }
-    var playerReady by remember { mutableStateOf(false) }
     var playerViewReady by remember { mutableStateOf(false) }
     val logTag = "SeriesMiniPlayer"
+    val scope = rememberCoroutineScope()
 
     // Auto-hide controls after 5 seconds (pero NO si el diálogo está abierto)
-    LaunchedEffect(showControls, isPlaying, showTrackSelector) {
-        if (showControls && isPlaying && !hasError && !showTrackSelector) {
+    LaunchedEffect(showControls, uiState.isPlaying, uiState.hasError, showTrackSelector) {
+        if (showControls && uiState.isPlaying && !uiState.hasError && !showTrackSelector) {
             delay(5000)
             showControls = false
         }
-    }
-
-    // Listen to player state changes
-    DisposableEffect(playerManager) {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                val name = when (playbackState) {
-                    Player.STATE_IDLE -> "IDLE"
-                    Player.STATE_BUFFERING -> "BUFFERING"
-                    Player.STATE_READY -> "READY"
-                    Player.STATE_ENDED -> "ENDED"
-                    else -> playbackState.toString()
-                }
-                Log.d(logTag, "onPlaybackStateChanged=$name isPlaying=${playerManager.isPlaying()}")
-                when (playbackState) {
-                    Player.STATE_READY -> {
-                        hasError = false
-                        playerReady = true
-                        scope.launch {
-                            delay(300)
-                            if (!playerManager.isPlaying()) {
-                                Log.d(logTag, "Watchdog reanudando tras READY sin reproducción")
-                                playerManager.play()
-                            }
-                        }
-                    }
-                    Player.STATE_ENDED -> hasError = false
-                }
-            }
-
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.e(logTag, "PlayerError ${error.errorCodeName}: ${error.message}")
-                hasError = true
-                showControls = true
-            }
-
-            override fun onIsPlayingChanged(playing: Boolean) {
-                Log.d(logTag, "onIsPlayingChanged playing=$playing")
-                isPlaying = playing
-                if (!playing) showControls = true
-            }
-        }
-        playerManager.getPlayer()?.addListener(listener)
-        onDispose { playerManager.getPlayer()?.removeListener(listener) }
     }
 
     // Initialize player BEFORE creating the view
@@ -133,33 +82,18 @@ fun SeriesMiniPlayer(
                 showControls = !showControls
             }
     ) {
-        // Player view - FULL SIZE
-        key(streamUrl, playerReady) {
-            AndroidView(
-                factory = { ctx ->
-                    Log.d(logTag, "Creando PlayerView (factory)")
-                    PlayerView(ctx).apply {
-                        useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                        setKeepContentOnPlayerReset(true)
-                        keepScreenOn = true
-                        playerManager.getPlayer()?.let { player = it }
-                    }
-                },
-                update = { view ->
-                    if (!playerViewReady) playerViewReady = true
-                    val currentPlayer = playerManager.getPlayer()
-                    if (currentPlayer != null && view.player != currentPlayer) view.player = currentPlayer
-                    view.keepScreenOn = true
-                },
-                modifier = Modifier.fillMaxSize()
+        key(streamUrl) {
+            PlayerVideoSurface(
+                streamKey = streamUrl,
+                modifier = Modifier.fillMaxSize(),
+                playerManager = playerManager,
+                onPlayerReady = { playerViewReady = true }
             )
         }
 
         // Controls overlay
         AnimatedVisibility(
-            visible = showControls || !isPlaying || hasError,
+            visible = showControls || !uiState.isPlaying || uiState.hasError,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -211,13 +145,12 @@ fun SeriesMiniPlayer(
                     }
                 }
 
-                // Center controls con mensaje de error arriba
                 Column(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    if (hasError) {
+                    if (uiState.hasError) {
                         Text(
                             text = "Contenido no disponible",
                             color = Color.White,
@@ -236,9 +169,9 @@ fun SeriesMiniPlayer(
                             modifier = Modifier.size(48.dp)
                         ) { Icon(Icons.Default.SkipPrevious, contentDescription = "Episodio anterior", tint = if (hasPrevious) Color.White else Color.Gray, modifier = Modifier.size(36.dp)) }
 
-                        if (hasError) {
+                        if (uiState.hasError) {
                             OutlinedButton(onClick = {
-                                hasError = false
+                                uiState.hasError = false
                                 scope.launch {
                                     delay(100)
                                     playerManager.playMedia(streamUrl, PlayerType.SERIES)
@@ -251,11 +184,15 @@ fun SeriesMiniPlayer(
                         } else {
                             IconButton(
                                 onClick = {
-                                    if (isPlaying) { playerManager.pause(); isPlaying = false } else { playerManager.play(); isPlaying = true }
+                                    if (uiState.isPlaying) {
+                                        playerManager.pause()
+                                    } else {
+                                        playerManager.play()
+                                    }
                                     showControls = true
                                 },
                                 modifier = Modifier.size(64.dp)
-                            ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (isPlaying) "Pausar" else "Reproducir", tint = Color.White, modifier = Modifier.size(48.dp)) }
+                            ) { Icon(if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (uiState.isPlaying) "Pausar" else "Reproducir", tint = Color.White, modifier = Modifier.size(48.dp)) }
                         }
 
                         IconButton(

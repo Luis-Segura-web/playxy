@@ -1,3 +1,4 @@
+
 package com.iptv.playxy.ui.player
 
 import android.app.Activity
@@ -25,7 +26,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
@@ -36,7 +36,6 @@ import kotlinx.coroutines.delay
  * - Controls overlay with auto-hide (5 seconds)
  * - Keep screen on (prevent dimming)
  */
-@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun FullscreenPlayer(
     streamUrl: String,
@@ -434,22 +433,27 @@ fun FullscreenPlayer(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // SEEKBAR DELGADO Y ESTILIZADO
-                        Slider(
-                            value = currentPosition.toFloat(),
-                            onValueChange = { newValue ->
-                                playerManager.seekTo(newValue.toLong())
-                            },
-                            valueRange = 0f..duration.toFloat(),
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.Gray.copy(alpha = 0.5f)
-                            ),
+                        // SEEKBAR con área táctil aumentada
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(24.dp) // Más delgado
-                        )
+                                .height(48.dp), // Aumenta el área táctil
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Slider(
+                                value = currentPosition.toFloat(),
+                                onValueChange = { newValue ->
+                                    playerManager.seekTo(newValue.toLong())
+                                },
+                                valueRange = 0f..duration.toFloat(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = Color.Gray.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
 

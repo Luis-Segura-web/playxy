@@ -1,5 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
-
 package com.iptv.playxy.ui.player
 
 import android.content.Context
@@ -10,6 +8,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -22,7 +21,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class PlayerManager @Inject constructor(@ApplicationContext private val context: Context) {
+class PlayerManager @Inject constructor(@param:ApplicationContext private val context: Context) {
 
     private var player: ExoPlayer? = null
     private var currentUrl: String? = null
@@ -38,13 +37,14 @@ class PlayerManager @Inject constructor(@ApplicationContext private val context:
     private val firstFrameRendered = AtomicBoolean(false)
     private val frameListeners = CopyOnWriteArrayList<(Boolean) -> Unit>()
     private var watchdogPosted = false
-    private val frameWatchdogTimeoutMs = 3_000L // tiempo máximo para recibir primer frame
+    private val frameWatchdogTimeoutMs = 7_000L // Dar más margen antes de reiniciar
 
     init { registerManager(this) }
 
     fun addFrameListener(listener: (Boolean) -> Unit) { frameListeners.addIfAbsent(listener) }
     fun removeFrameListener(listener: (Boolean) -> Unit) { frameListeners.remove(listener) }
     fun hasRenderedFirstFrame(): Boolean = firstFrameRendered.get()
+    @OptIn(UnstableApi::class)
     fun initializePlayer(): ExoPlayer {
         if (player == null) {
             Log.d(tag, "Inicializando ExoPlayer")
@@ -126,24 +126,11 @@ class PlayerManager @Inject constructor(@ApplicationContext private val context:
         }, frameWatchdogTimeoutMs)
     }
 
-    private fun clearVideoSurfaceIfNeeded() {
-        val p = player ?: return
-        // Limpiar surface solo si estamos en TV (para que no conserve frame anterior) o si no hay primer frame
-        if (currentType == PlayerType.TV || !firstFrameRendered.get()) {
-            try {
-                p.clearVideoSurface()
-            } catch (e: Throwable) {
-                Log.w(tag, "Error limpiando surface: ${e.message}")
-            }
-        }
-    }
-
     private fun forceSoftReset() {
         val url = currentUrl ?: return
         val p = player ?: return
         Log.d(tag, "Soft reset (clearSurface + stop + prepare + play) para intentar obtener frames")
         p.playWhenReady = false
-        clearVideoSurfaceIfNeeded()
         p.stop()
         p.setMediaItem(MediaItem.fromUri(url))
         p.prepare()
@@ -182,7 +169,6 @@ class PlayerManager @Inject constructor(@ApplicationContext private val context:
             frameListeners.forEach { it(false) }
             lastStartTimestamp = System.currentTimeMillis()
             lastFrameTimestamp = 0L
-            clearVideoSurfaceIfNeeded()
             p.stop()
             p.setMediaItem(MediaItem.fromUri(url))
             p.prepare()
@@ -208,7 +194,7 @@ class PlayerManager @Inject constructor(@ApplicationContext private val context:
 
     fun pause() { player?.apply { Log.d(tag, "pause() llamado"); pause() } }
 
-    fun release() { player?.release(); player = null; currentUrl = null; firstFrameRendered.set(false); watchdogPosted = false }
+    fun release() { player?.clearVideoSurface(); player?.release(); player = null; currentUrl = null; firstFrameRendered.set(false); watchdogPosted = false }
 
     fun seekTo(positionMs: Long) { player?.seekTo(positionMs) }
     fun seekForward(incrementMs: Long = 10000) { player?.seekTo((player?.currentPosition ?: 0L) + incrementMs) }

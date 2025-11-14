@@ -1,6 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
-@file:androidx.media3.common.util.UnstableApi
-
 package com.iptv.playxy.ui.player
 
 import android.util.Log
@@ -19,11 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -43,64 +35,29 @@ fun TVMiniPlayer(
     onFullscreen: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
-    val uiState = remember { PlayerUiState() }
+    val uiState = rememberPlayerUiState(playerManager)
     var showControls by remember { mutableStateOf(true) }
-    var playerReady by remember { mutableStateOf(false) }
+    var showTrackSelector by remember { mutableStateOf(false) }
     var playerViewReady by remember { mutableStateOf(false) }
+    var lastPlayedUrl by remember { mutableStateOf<String?>(null) }
     val logTag = "TVMiniPlayer"
 
     // Auto-hide controls after 5 seconds (pero NO si el diálogo está abierto)
-    LaunchedEffect(showControls, uiState.isPlaying, uiState.hasError) {
-        if (showControls && uiState.isPlaying && !uiState.hasError) {
+    LaunchedEffect(showControls, uiState.isPlaying, uiState.hasError, showTrackSelector) {
+        if (showControls && uiState.isPlaying && !uiState.hasError && !showTrackSelector) {
             delay(5000)
             showControls = false
-        }
-    }
-
-    // Registrar frame listener
-    DisposableEffect(playerManager) {
-        val frameListener: (Boolean) -> Unit = { rendered ->
-            uiState.firstFrameRendered = rendered
-            uiState.isBuffering = !rendered
-        }
-        playerManager.addFrameListener(frameListener)
-        onDispose { playerManager.removeFrameListener(frameListener) }
-    }
-
-    // Listen to player state changes
-    DisposableEffect(playerManager) {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                uiState.isBuffering = playbackState == Player.STATE_BUFFERING && !uiState.firstFrameRendered
-                if (playbackState == Player.STATE_READY) uiState.hasError = false
-            }
-
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.e(logTag, "PlayerError ${error.errorCodeName}: ${error.message}")
-                uiState.hasError = true
-                showControls = true
-            }
-
-            override fun onIsPlayingChanged(playing: Boolean) {
-                uiState.isPlaying = playing
-                if (!playing) {
-                    showControls = true
-                }
-            }
-        }
-        playerManager.getPlayer()?.addListener(listener)
-        onDispose {
-            playerManager.getPlayer()?.removeListener(listener)
         }
     }
 
     // Inicializar player (no reproducir aún hasta que el PlayerView exista)
     LaunchedEffect(Unit) { playerManager.initializePlayer() }
 
-    // Reproducir cuando el PlayerView esté listo y cambie la URL
+    // Reproducir cuando el PlayerView esté listo y la URL cambie realmente
     LaunchedEffect(streamUrl, playerViewReady) {
-        if (playerViewReady) {
-            Log.d(logTag, "playMedia diferido hasta tener surface URL=$streamUrl")
+        if (playerViewReady && streamUrl.isNotBlank() && streamUrl != lastPlayedUrl) {
+            Log.d(logTag, "MiniPlayer: start playback URL=$streamUrl (surface ready)")
+            lastPlayedUrl = streamUrl
             playerManager.playMedia(streamUrl, PlayerType.TV)
         }
     }
@@ -114,40 +71,18 @@ fun TVMiniPlayer(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
-                showControls = !showControls
+                if (!showTrackSelector) {
+                    showControls = !showControls
+                }
             }
     ) {
         // Player view - FULL SIZE
-        // Key basado en streamUrl + playerReady para forzar recreación cuando sea necesario
-        key(streamUrl, playerReady) {
-            AndroidView(
-                factory = { ctx ->
-                    Log.d(logTag, "Creando PlayerView (factory)")
-                    PlayerView(ctx).apply {
-                        useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                        setKeepContentOnPlayerReset(false) // para no mantener frame anterior al cambiar canal
-                        keepScreenOn = true
-                        // Conectar player inmediatamente si está disponible
-                        playerManager.getPlayer()?.let {
-                            Log.d(logTag, "Conectando player en factory")
-                            player = it
-                        }
-                    }
-                },
-                update = { view ->
-                    if (!playerViewReady) playerViewReady = true
-                    val currentPlayer = playerManager.getPlayer()
-                    if (currentPlayer != null && view.player != currentPlayer) {
-                        Log.d(logTag, "Reconectando player en update")
-                        view.player = currentPlayer
-                    }
-                    view.keepScreenOn = true
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
+        PlayerVideoSurface(
+            streamKey = streamUrl,
+            modifier = Modifier.fillMaxSize(),
+            playerManager = playerManager,
+            onPlayerReady = { playerViewReady = true }
+        )
 
         // Controls overlay
         AnimatedVisibility(
@@ -295,6 +230,7 @@ fun TVMiniPlayer(
                     // Audio/Subtitles button - only if tracks available
                     if (hasTracksAvailable) {
                         IconButton(onClick = {
+                            showTrackSelector = true
                             showControls = true
                         }) {
                             Icon(
@@ -316,20 +252,20 @@ fun TVMiniPlayer(
                         )
                     }
                 }
-
-                // Spinner mientras buffering sin primer frame
-                if (uiState.isBuffering && !uiState.firstFrameRendered) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
-                }
-
-                // Track Selector Dialog
-                if (showControls) {
-                    TrackSelectorDialog(
-                        player = playerManager.getPlayer(),
-                        onDismiss = { showControls = false }
-                    )
-                }
             }
+        }
+
+        // Spinner mientras buffering sin primer frame
+        if (uiState.isBuffering && !uiState.firstFrameRendered) {
+            CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
+        }
+
+        // Track Selector Dialog
+        if (showTrackSelector) {
+            TrackSelectorDialog(
+                player = playerManager.getPlayer(),
+                onDismiss = { showTrackSelector = false }
+            )
         }
     }
 }
