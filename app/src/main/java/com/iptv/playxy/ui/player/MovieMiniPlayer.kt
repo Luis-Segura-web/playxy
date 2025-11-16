@@ -1,31 +1,41 @@
-
 package com.iptv.playxy.ui.player
 
-import android.util.Log
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-/**
- * Mini player for Movies (Portrait mode)
- * Controls: Seek Bar, Pause/Play, Close, Fullscreen
- */
 @Composable
 fun MovieMiniPlayer(
     streamUrl: String,
@@ -35,297 +45,159 @@ fun MovieMiniPlayer(
     modifier: Modifier = Modifier,
     onFullscreen: () -> Unit = {}
 ) {
-    val uiState = rememberPlayerUiState(playerManager)
-    var showControls by remember { mutableStateOf(true) }
-    var showTrackSelector by remember { mutableStateOf(false) }
-    var playerViewReady by remember { mutableStateOf(false) }
-    var currentPosition by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
-    val logTag = "MovieMiniPlayer"
-    val scope = rememberCoroutineScope()
+    val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
+    var showTrackDialog by remember { mutableStateOf(false) }
 
-    // Auto-hide controls after 5 seconds (pero NO si el diálogo está abierto)
-    LaunchedEffect(showControls, uiState.isPlaying, showTrackSelector, uiState.hasError) {
-        if (showControls && uiState.isPlaying && !uiState.hasError && !showTrackSelector) {
-            delay(5000)
-            showControls = false
-        }
+    LaunchedEffect(streamUrl) {
+        playerManager.playMedia(streamUrl, PlayerType.MOVIE)
     }
 
-    // Initialize player BEFORE creating the view
-    LaunchedEffect(Unit) {
-        playerManager.initializePlayer()
-    }
-
-    LaunchedEffect(streamUrl, playerViewReady) {
-        if (playerViewReady) {
-            Log.d(logTag, "playMedia diferido (Movie) URL=$streamUrl")
-            playerManager.playMedia(streamUrl, PlayerType.MOVIE)
-        }
-    }
-
-    // Update position and duration periodically
-    LaunchedEffect(playerManager) {
-        while (isActive) {
-            currentPosition = playerManager.getCurrentPosition()
-            duration = playerManager.getDuration()
-            delay(500)
-        }
-    }
-
-    Box(
+    MiniPlayerContainer(
+        uiState = playbackState,
+        playerManager = playerManager,
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(16f / 9f)
-            .background(Color.Black)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                if (!showTrackSelector) showControls = !showControls
+            .aspectRatio(16f / 9f),
+        controlsLocked = showTrackDialog
+    ) { state, _, setControlsVisible ->
+        MovieMiniPlayerOverlay(
+            title = movieTitle,
+            state = state,
+            onClose = {
+                onClose()
+                setControlsVisible(true)
+            },
+            onReplay = { playerManager.playMedia(streamUrl, PlayerType.MOVIE, forcePrepare = true) },
+            onSeekBack = { playerManager.seekBackward() },
+            onSeekForward = { playerManager.seekForward() },
+            onTogglePlay = {
+                if (state.isPlaying) playerManager.pause() else playerManager.play()
+            },
+            onFullscreen = onFullscreen,
+            onShowTracks = {
+                setControlsVisible(true)
+                showTrackDialog = true
+            },
+            onSeek = { position -> playerManager.seekTo(position) },
+            hasTrackOptions = state.tracks.hasDialogOptions
+        )
+    }
+
+    if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
+        TrackSelectionDialog(
+            tracks = playbackState.tracks,
+            onDismiss = { showTrackDialog = false },
+            onAudioSelected = { option -> playerManager.selectAudioTrack(option.id) },
+            onSubtitleSelected = { option ->
+                if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
             }
-    ) {
-        key(streamUrl) {
-            PlayerVideoSurface(
-                streamKey = streamUrl,
-                modifier = Modifier.fillMaxSize(),
-                playerManager = playerManager,
-                onPlayerReady = { playerViewReady = true }
-            )
-        }
-
-        // Controls overlay
-        AnimatedVisibility(
-            visible = showControls || !uiState.isPlaying || uiState.hasError,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                // Semi-transparent background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f))
-                )
-
-                // Top bar with movie title and CLOSE button (TOP RIGHT)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .background(
-                            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Black.copy(alpha = 0.7f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = movieTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        modifier = Modifier.weight(1f)
-                    )
-                    // CLOSE button - TOP RIGHT
-                    IconButton(onClick = onClose) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cerrar",
-                            tint = Color.White
-                        )
-                    }
-                }
-
-                // Center controls con mensaje de error arriba
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    if (uiState.hasError) {
-                        Text(
-                            text = "Contenido no disponible",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.padding(horizontal = 32.dp),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = { playerManager.seekBackward(10000) },
-                            modifier = Modifier.size(56.dp)
-                        ) { Icon(Icons.Default.Replay10, contentDescription = "Retroceder 10s", tint = Color.White, modifier = Modifier.size(40.dp)) }
-
-                        if (uiState.hasError) {
-                            OutlinedButton(onClick = {
-                                uiState.hasError = false
-                                scope.launch {
-                                    delay(100)
-                                    playerManager.playMedia(streamUrl, PlayerType.MOVIE)
-                                }
-                            }, modifier = Modifier.height(56.dp)) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Reintentar", tint = Color.White, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Reintentar")
-                            }
-                        } else {
-                            IconButton(
-                                onClick = {
-                                    if (uiState.isPlaying) {
-                                        playerManager.pause()
-                                    } else {
-                                        playerManager.play()
-                                    }
-                                    showControls = true
-                                },
-                                modifier = Modifier.size(72.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (uiState.isPlaying) "Pausar" else "Reproducir",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(56.dp)
-                                )
-                            }
-                        }
-
-                        IconButton(
-                            onClick = { playerManager.seekForward(10000) },
-                            modifier = Modifier.size(56.dp)
-                        ) { Icon(Icons.Default.Forward10, contentDescription = "Avanzar 10s", tint = Color.White, modifier = Modifier.size(40.dp)) }
-                    }
-                }
-
-                // Bottom right buttons (Audio/Subtitles + Fullscreen)
-                val hasTracksAvailable = hasAudioOrSubtitleTracks(playerManager.getPlayer())
-
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Audio/Subtitles button - only if tracks available
-                    if (hasTracksAvailable) {
-                        IconButton(onClick = {
-                            showTrackSelector = true
-                            showControls = true // Mantener controles visibles
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Audio y Subtítulos",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    // FULLSCREEN button
-                    IconButton(onClick = onFullscreen) {
-                        Icon(
-                            imageVector = Icons.Default.Fullscreen,
-                            contentDescription = "Pantalla completa",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                }
-
-                // Track Selector Dialog
-                if (showTrackSelector) {
-                    TrackSelectorDialog(
-                        player = playerManager.getPlayer(),
-                        onDismiss = { showTrackSelector = false }
-                    )
-                }
-
-                // Bottom seek bar and time
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .background(
-                            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.7f)
-                                )
-                            )
-                        )
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .padding(bottom = 40.dp) // Space for fullscreen button
-                ) {
-                    // Time indicators
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = formatTime(currentPosition),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White
-                        )
-                        Text(
-                            text = formatTime(duration),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White
-                        )
-                    }
-
-                    // Seek bar - Con área táctil aumentada
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp), // Aumenta el área táctil verticalmente
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Slider(
-                            value = currentPosition.toFloat().coerceIn(0f, duration.toFloat().coerceAtLeast(1f)),
-                            onValueChange = { playerManager.seekTo(it.toLong()) },
-                            valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.Gray.copy(alpha = 0.5f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-
-
-            }
-        }
-
-        if (uiState.isBuffering && !uiState.firstFrameRendered) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
-        }
-
-        if (showTrackSelector) {
-            TrackSelectorDialog(player = playerManager.getPlayer(), onDismiss = { showTrackSelector = false })
-        }
+        )
     }
 }
 
-private fun formatTime(timeMs: Long): String {
-    val totalSeconds = timeMs / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    val locale = java.util.Locale.getDefault()
-    return if (hours > 0) {
-        String.format(locale, "%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(locale, "%02d:%02d", minutes, seconds)
+@Composable
+private fun MovieMiniPlayerOverlay(
+    title: String,
+    state: PlaybackUiState,
+    onClose: () -> Unit,
+    onReplay: () -> Unit,
+    onSeekBack: () -> Unit,
+    onSeekForward: () -> Unit,
+    onTogglePlay: () -> Unit,
+    onFullscreen: () -> Unit,
+    onShowTracks: () -> Unit,
+    onSeek: (Long) -> Unit,
+    hasTrackOptions: Boolean
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Top bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                    )
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .align(Alignment.TopCenter),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onClose) {
+                Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+            }
+        }
+
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (state.hasError) {
+                Text(
+                    text = state.errorMessage ?: "Contenido no disponible",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                FilledTonalButton(onClick = onReplay) {
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
+                    Text(text = "Reintentar", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onSeekBack) {
+                    Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
+                }
+                IconButton(onClick = onTogglePlay) {
+                    Icon(
+                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Pausar" else "Reproducir",
+                        tint = Color.White
+                    )
+                }
+                IconButton(onClick = onSeekForward) {
+                    Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (hasTrackOptions) {
+                IconButton(onClick = onShowTracks) {
+                    Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
+                }
+            }
+            IconButton(onClick = onFullscreen) {
+                Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Pantalla completa", tint = Color.White)
+            }
+        }
+
+        PlaybackProgress(
+            state = state,
+            onSeek = onSeek,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                    )
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        )
     }
 }

@@ -1,212 +1,381 @@
 package com.iptv.playxy.ui.player
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
+private const val TAG = "PlayerManager"
+private const val POSITION_UPDATE_INTERVAL_MS = 500L
+
+@OptIn(UnstableApi::class)
 @Singleton
-class PlayerManager @Inject constructor(@param:ApplicationContext private val context: Context) {
+class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
-    private var player: ExoPlayer? = null
-    private var currentUrl: String? = null
-    private var currentType: PlayerType = PlayerType.TV
-    private val tag = "PlayerManager"
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    // Retry logic
-    private var retryCount = 0
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+        .setConnectTimeoutMs(25_000)
+        .setReadTimeoutMs(25_000)
+        .setAllowCrossProtocolRedirects(true)
+        .setUserAgent("PlayXY/Media3-1.8.0")
 
-    private var lastStartTimestamp: Long = 0L
-    private var lastFrameTimestamp: Long = 0L
-    private val firstFrameRendered = AtomicBoolean(false)
-    private val frameListeners = CopyOnWriteArrayList<(Boolean) -> Unit>()
-    private var watchdogPosted = false
-    private val frameWatchdogTimeoutMs = 7_000L // Dar más margen antes de reiniciar
+    private val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
-    init { registerManager(this) }
+    private val trackSelector = DefaultTrackSelector(context)
 
-    fun addFrameListener(listener: (Boolean) -> Unit) { frameListeners.addIfAbsent(listener) }
-    fun removeFrameListener(listener: (Boolean) -> Unit) { frameListeners.remove(listener) }
-    fun hasRenderedFirstFrame(): Boolean = firstFrameRendered.get()
-    @OptIn(UnstableApi::class)
-    fun initializePlayer(): ExoPlayer {
-        if (player == null) {
-            Log.d(tag, "Inicializando ExoPlayer")
-            val (connectTimeout, readTimeout) = when (currentType) {
-                PlayerType.TV -> 15_000 to 20_000
-                PlayerType.MOVIE, PlayerType.SERIES -> 30_000 to 30_000
-            }
-            val httpFactory = DefaultHttpDataSource.Factory()
-                .setUserAgent("PlayXY/1.0 (Android)")
-                .setConnectTimeoutMs(connectTimeout)
-                .setReadTimeoutMs(readTimeout)
-                .setAllowCrossProtocolRedirects(true)
-            val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
-            val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+    private val dataSourceFactory = DefaultDataSource.Factory(
+        context,
+        httpDataSourceFactory.setTransferListener(bandwidthMeter)
+    )
 
-            player = ExoPlayer.Builder(context)
-                .setMediaSourceFactory(mediaSourceFactory)
-                .setLoadControl(DefaultLoadControl())
-                .build()
-                .apply {
-                    setAudioAttributes(
-                        androidx.media3.common.AudioAttributes.Builder()
-                            .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
-                            .setUsage(androidx.media3.common.C.USAGE_MEDIA)
-                            .build(), true
+    private val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        .setLiveTargetOffsetMs(4_000)
+
+    private val renderersFactory = DefaultRenderersFactory(context)
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        .setEnableDecoderFallback(true)
+
+    private val loadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            /* minBufferMs = */ 20_000,
+            /* maxBufferMs = */ 90_000,
+            /* bufferForPlaybackMs = */ 1_500,
+            /* bufferForPlaybackAfterRebufferMs = */ 3_000
+        )
+        .setBackBuffer(45_000, true)
+        .setPrioritizeTimeOverSizeThresholds(true)
+        .build()
+
+    private val liveSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
+        .setFallbackMinPlaybackSpeed(0.97f)
+        .setFallbackMaxPlaybackSpeed(1.02f)
+        .setMaxLiveOffsetErrorMsForUnitSpeed(1_500L)
+        .build()
+
+    private val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory)
+        .setTrackSelector(trackSelector)
+        .setLoadControl(loadControl)
+        .setLivePlaybackSpeedControl(liveSpeedControl)
+        .setBandwidthMeter(bandwidthMeter)
+        .setMediaSourceFactory(mediaSourceFactory)
+        .setHandleAudioBecomingNoisy(true)
+        .build().apply {
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                true
+            )
+            setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+            setWakeMode(C.WAKE_MODE_NETWORK)
+        }
+
+    private val _uiState = MutableStateFlow(PlaybackUiState())
+    val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
+
+    private var currentRequest: PlaybackRequest? = null
+    private var progressJob: Job? = null
+    private var trackLookup: Map<String, TrackOption> = emptyMap()
+
+    init {
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                _uiState.update { state ->
+                    state.copy(
+                        isBuffering = playbackState == Player.STATE_BUFFERING,
+                        isPlaying = player.isPlaying,
+                        hasError = if (playbackState == Player.STATE_IDLE) state.hasError else false
                     )
-                    addListener(object : Player.Listener {
-                        override fun onIsPlayingChanged(isPlaying: Boolean) { Log.d(tag, "onIsPlayingChanged = $isPlaying") }
-                        override fun onPlaybackStateChanged(state: Int) {
-                            val stateName = when (state) {
-                                Player.STATE_IDLE -> "IDLE"
-                                Player.STATE_BUFFERING -> "BUFFERING"
-                                Player.STATE_READY -> "READY"
-                                Player.STATE_ENDED -> "ENDED"
-                                else -> state.toString()
-                            }
-                            Log.d(tag, "onPlaybackStateChanged = $stateName")
-                            if (state == Player.STATE_BUFFERING) {
-                                // Reiniciar indicadores para nueva preparación y notificar listeners (no listo)
-                                frameListeners.forEach { it(false) }
-                                firstFrameRendered.set(false)
-                                lastStartTimestamp = System.currentTimeMillis()
-                                lastFrameTimestamp = 0L
-                                scheduleFrameWatchdog()
-                            }
-                            if (state == Player.STATE_READY) {
-                                retryCount = 0
-                                // READY sin primer frame todavía: watchdog seguirá activo
-                            }
-                        }
-                        override fun onPlayerError(error: PlaybackException) { Log.e(tag, "PlayerError: ${error.errorCodeName} - ${error.message}"); handleRetryOnError(error) }
-                        override fun onRenderedFirstFrame() { markFrameRendered() }
-                        override fun onVideoSizeChanged(videoSize: VideoSize) { if (!firstFrameRendered.get() && videoSize.width > 0 && videoSize.height > 0) markFrameRendered() }
-                    })
                 }
-        }
-        return player!!
-    }
-
-    private fun markFrameRendered() {
-        if (firstFrameRendered.compareAndSet(false, true)) {
-            lastFrameTimestamp = System.currentTimeMillis()
-            Log.d(tag, "Primer frame de video renderizado tras ${lastFrameTimestamp - lastStartTimestamp}ms")
-            frameListeners.forEach { it(true) }
-            watchdogPosted = false
-        }
-    }
-
-    private fun scheduleFrameWatchdog() {
-        if (watchdogPosted) return
-        watchdogPosted = true
-        mainHandler.postDelayed({
-            watchdogPosted = false
-            if (!firstFrameRendered.get()) {
-                val elapsed = System.currentTimeMillis() - lastStartTimestamp
-                Log.w(tag, "Watchdog: sin primer frame tras ${elapsed}ms. Reiniciando pipeline rápido.")
-                forceSoftReset()
+                if (playbackState == Player.STATE_READY) {
+                    updateProgress()
+                }
             }
-        }, frameWatchdogTimeoutMs)
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                _uiState.update { it.copy(isPlaying = isPlaying, isBuffering = if (isPlaying) false else it.isBuffering) }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e(TAG, "Playback error", error)
+                _uiState.update {
+                    it.copy(
+                        hasError = true,
+                        errorMessage = error.localizedMessage ?: "Error de reproducción",
+                        isPlaying = false,
+                        isBuffering = false
+                    )
+                }
+            }
+
+            override fun onRenderedFirstFrame() {
+                _uiState.update { it.copy(firstFrameRendered = true, isBuffering = false) }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                captureTrackInfo(tracks)
+            }
+        })
+
+        startProgressUpdates()
     }
 
-    private fun forceSoftReset() {
-        val url = currentUrl ?: return
-        val p = player ?: return
-        Log.d(tag, "Soft reset (clearSurface + stop + prepare + play) para intentar obtener frames")
-        p.playWhenReady = false
-        p.stop()
-        p.setMediaItem(MediaItem.fromUri(url))
-        p.prepare()
-        p.playWhenReady = true
-    }
-
-    private fun maxRetriesFor(type: PlayerType): Int = when (type) {
-        PlayerType.TV -> 1
-        PlayerType.MOVIE, PlayerType.SERIES -> 3
-    }
-
-    private fun handleRetryOnError(error: PlaybackException) {
-        val shouldRetry = (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
-                || error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
-        val url = currentUrl
-        if (shouldRetry && url != null && retryCount < maxRetriesFor(currentType)) {
-            val delayMs = if (currentType == PlayerType.TV) 1500L else (2_000L * (retryCount + 1))
-            Log.d(tag, "Retry ${retryCount + 1}/${maxRetriesFor(currentType)} en ${delayMs}ms por ${error.errorCodeName}")
-            retryCount++
-            mainHandler.postDelayed({ playMedia(url, currentType) }, delayMs)
-        } else {
-            Log.d(tag, "No se reintentará. shouldRetry=$shouldRetry url=${url != null} retryCount=$retryCount tipo=$currentType")
+    private fun startProgressUpdates() {
+        progressJob?.cancel()
+        progressJob = scope.launch {
+            while (isActive) {
+                updateProgress()
+                delay(POSITION_UPDATE_INTERVAL_MS)
+            }
         }
     }
 
-    fun playMedia(url: String, type: PlayerType = PlayerType.TV) {
-        currentType = type
-        initializePlayer()
-        pauseAllExcept(this)
-        val p = player ?: return
-        if (currentUrl != url) {
-            Log.d(tag, "Nueva URL, preparando media: $url ($type)")
-            currentUrl = url
-            retryCount = 0
-            firstFrameRendered.set(false)
-            frameListeners.forEach { it(false) }
-            lastStartTimestamp = System.currentTimeMillis()
-            lastFrameTimestamp = 0L
-            p.stop()
-            p.setMediaItem(MediaItem.fromUri(url))
-            p.prepare()
-            p.playWhenReady = true
-            scheduleFrameWatchdog()
-        } else {
-            Log.d(tag, "Misma URL, reanudando si estaba pausado ($type)")
-            if (p.playbackState == Player.STATE_IDLE) p.prepare()
-            p.playWhenReady = true
-            if (!firstFrameRendered.get()) scheduleFrameWatchdog()
+    private fun updateProgress() {
+        if (player.playbackState == Player.STATE_IDLE) return
+        val safeDuration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0 } ?: _uiState.value.durationMs
+        val safePosition = player.currentPosition.coerceAtLeast(0L)
+        _uiState.update {
+            it.copy(
+                positionMs = safePosition,
+                durationMs = safeDuration
+            )
         }
+    }
+
+    fun playMedia(url: String, type: PlayerType = PlayerType.TV, forcePrepare: Boolean = false) {
+        if (url.isBlank()) return
+        val lastRequest = currentRequest
+        if (!forcePrepare && lastRequest?.url == url) {
+            if (player.playbackState == Player.STATE_IDLE) {
+                player.prepare()
+            }
+            player.playWhenReady = true
+            _uiState.update { it.copy(playerType = type, streamUrl = url, hasError = false) }
+            return
+        }
+
+        currentRequest = PlaybackRequest(url, type)
+        player.setMediaItem(buildMediaItem(url, type))
+        player.prepare()
+        player.playWhenReady = true
+
+        _uiState.update {
+            it.copy(
+                streamUrl = url,
+                playerType = type,
+                isBuffering = true,
+                hasError = false,
+                errorMessage = null,
+                firstFrameRendered = false,
+                positionMs = 0L,
+                durationMs = 0L,
+                tracks = PlaybackTracks.empty(),
+                selectedAudioTrackId = null,
+                selectedSubtitleTrackId = null
+            )
+        }
+    }
+
+    private fun buildMediaItem(url: String, type: PlayerType): MediaItem {
+        val builder = MediaItem.Builder().setUri(url)
+        if (type == PlayerType.TV) {
+            builder.setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setMaxPlaybackSpeed(1.02f)
+                    .build()
+            )
+        }
+        return builder.build()
     }
 
     fun play() {
-        initializePlayer()
-        pauseAllExcept(this)
-        player?.apply {
-            Log.d(tag, "play() llamado")
-            if (playbackState == Player.STATE_IDLE) prepare()
-            playWhenReady = true
+        if (player.playbackState == Player.STATE_IDLE && currentRequest != null) {
+            player.prepare()
+        }
+        player.playWhenReady = true
+    }
+
+    fun pause() {
+        player.playWhenReady = false
+    }
+
+    fun seekTo(positionMs: Long) {
+        player.seekTo(positionMs.coerceAtLeast(0L))
+        updateProgress()
+    }
+
+    fun seekForward(incrementMs: Long = 10_000L) {
+        seekTo(player.currentPosition + incrementMs)
+    }
+
+    fun seekBackward(decrementMs: Long = 10_000L) {
+        seekTo(player.currentPosition - decrementMs)
+    }
+
+    fun getCurrentPosition(): Long = player.currentPosition.coerceAtLeast(0L)
+
+    fun getDuration(): Long = player.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+
+    fun isPlaying(): Boolean = player.isPlaying
+
+    fun getPlayer(): Player = player
+
+    fun release() {
+        progressJob?.cancel()
+        player.release()
+        scope.cancel()
+    }
+
+    fun retryLastRequest() {
+        currentRequest?.let { playMedia(it.url, it.type, forcePrepare = true) }
+    }
+
+    fun selectAudioTrack(optionId: String) {
+        val option = trackLookup[optionId] ?: return
+        if (option.trackType != C.TRACK_TYPE_AUDIO) return
+        applyTrackOverride(option)
+    }
+
+    fun selectSubtitleTrack(optionId: String?) {
+        if (optionId == null || optionId == TrackOption.SUBTITLE_OFF_ID) {
+            disableSubtitles()
+            return
+        }
+        val option = trackLookup[optionId] ?: return
+        if (option.trackType != C.TRACK_TYPE_TEXT) return
+        applyTrackOverride(option)
+    }
+
+    fun disableSubtitles() {
+        val builder = trackSelector.parameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        trackSelector.parameters = builder.build()
+        captureTrackInfo(player.currentTracks)
+    }
+
+    private fun applyTrackOverride(option: TrackOption) {
+        val tracks = player.currentTracks
+        if (option.groupIndex < 0 || option.trackIndex < 0) return
+        val group = tracks.groups.getOrNull(option.groupIndex) ?: return
+        val override = TrackSelectionOverride(group.mediaTrackGroup, listOf(option.trackIndex))
+        val builder = trackSelector.parameters.buildUpon()
+            .setTrackTypeDisabled(option.trackType, false)
+            .clearOverridesOfType(option.trackType)
+            .addOverride(override)
+        trackSelector.parameters = builder.build()
+        captureTrackInfo(tracks)
+    }
+
+    private fun captureTrackInfo(tracks: Tracks) {
+        val audioTracks = mutableListOf<TrackOption>()
+        val textTracks = mutableListOf<TrackOption>()
+
+        tracks.groups.forEachIndexed { groupIndex, group ->
+            when (group.type) {
+                C.TRACK_TYPE_AUDIO -> {
+                    for (trackIndex in 0 until group.length) {
+                        val format = group.getTrackFormat(trackIndex)
+                        audioTracks.add(
+                            TrackOption(
+                                id = "audio-$groupIndex-$trackIndex",
+                                label = format.label ?: format.language ?: "Audio ${audioTracks.size + 1}",
+                                language = format.language,
+                                trackType = C.TRACK_TYPE_AUDIO,
+                                groupIndex = groupIndex,
+                                trackIndex = trackIndex,
+                                selected = group.isTrackSelected(trackIndex)
+                            )
+                        )
+                    }
+                }
+
+                C.TRACK_TYPE_TEXT -> {
+                    for (trackIndex in 0 until group.length) {
+                        val format = group.getTrackFormat(trackIndex)
+                        textTracks.add(
+                            TrackOption(
+                                id = "text-$groupIndex-$trackIndex",
+                                label = format.label ?: format.language ?: "Subtítulo ${textTracks.size + 1}",
+                                language = format.language,
+                                trackType = C.TRACK_TYPE_TEXT,
+                                groupIndex = groupIndex,
+                                trackIndex = trackIndex,
+                                selected = group.isTrackSelected(trackIndex)
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        if (textTracks.isNotEmpty()) {
+            val disableSelected = trackSelector.parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+            textTracks.add(
+                0,
+                TrackOption(
+                    id = TrackOption.SUBTITLE_OFF_ID,
+                    label = "Subtítulos desactivados",
+                    language = null,
+                    trackType = C.TRACK_TYPE_TEXT,
+                    groupIndex = -1,
+                    trackIndex = -1,
+                    selected = disableSelected,
+                    isDisableOption = true
+                )
+            )
+        }
+
+        trackLookup = (audioTracks + textTracks.filter { !it.isDisableOption }).associateBy { it.id }
+
+        val selectedAudio = audioTracks.firstOrNull { it.selected }?.id
+        val selectedText = when {
+            trackSelector.parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) -> TrackOption.SUBTITLE_OFF_ID
+            else -> textTracks.firstOrNull { it.selected && !it.isDisableOption }?.id
+        }
+
+        _uiState.update {
+            it.copy(
+                tracks = PlaybackTracks(audio = audioTracks, text = textTracks),
+                selectedAudioTrackId = selectedAudio,
+                selectedSubtitleTrackId = selectedText
+            )
         }
     }
 
-    fun pause() { player?.apply { Log.d(tag, "pause() llamado"); pause() } }
+    private data class PlaybackRequest(val url: String, val type: PlayerType)
 
-    fun release() { player?.clearVideoSurface(); player?.release(); player = null; currentUrl = null; firstFrameRendered.set(false); watchdogPosted = false }
-
-    fun seekTo(positionMs: Long) { player?.seekTo(positionMs) }
-    fun seekForward(incrementMs: Long = 10000) { player?.seekTo((player?.currentPosition ?: 0L) + incrementMs) }
-    fun seekBackward(decrementMs: Long = 10000) { player?.seekTo(((player?.currentPosition ?: 0L) - decrementMs).coerceAtLeast(0)) }
-    fun getCurrentPosition(): Long = player?.currentPosition ?: 0L
-    fun getDuration(): Long = player?.duration ?: 0L
-    fun isPlaying(): Boolean = player?.isPlaying ?: false
-    fun getPlayer(): Player? = player
-
-    companion object {
-        private val managers = CopyOnWriteArrayList<PlayerManager>()
-        private fun registerManager(manager: PlayerManager) { managers.addIfAbsent(manager) }
-        private fun pauseAllExcept(self: PlayerManager) { managers.forEach { m -> if (m !== self) m.pause() } }
-    }
+    private fun <T> List<T>.getOrNull(index: Int): T? = if (index in indices) this[index] else null
 }

@@ -1,33 +1,43 @@
-
 package com.iptv.playxy.ui.player
 
-import android.util.Log
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.Player
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-/**
- * Mini player for Series Episodes (Portrait mode)
- * Controls: Previous Episode, Pause/Play, Next Episode, Close, Fullscreen
- */
 @Composable
 fun SeriesMiniPlayer(
     streamUrl: String,
@@ -43,211 +53,190 @@ fun SeriesMiniPlayer(
     hasPrevious: Boolean = true,
     hasNext: Boolean = true
 ) {
-    val uiState = rememberPlayerUiState(playerManager)
-    var showControls by remember { mutableStateOf(true) }
-    var showTrackSelector by remember { mutableStateOf(false) }
-    var playerViewReady by remember { mutableStateOf(false) }
-    val logTag = "SeriesMiniPlayer"
-    val scope = rememberCoroutineScope()
+    val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
+    var showTrackDialog by remember { mutableStateOf(false) }
 
-    // Auto-hide controls after 5 seconds (pero NO si el diálogo está abierto)
-    LaunchedEffect(showControls, uiState.isPlaying, uiState.hasError, showTrackSelector) {
-        if (showControls && uiState.isPlaying && !uiState.hasError && !showTrackSelector) {
-            delay(5000)
-            showControls = false
-        }
+    LaunchedEffect(streamUrl) {
+        playerManager.playMedia(streamUrl, PlayerType.SERIES)
     }
 
-    // Initialize player BEFORE creating the view
-    LaunchedEffect(Unit) {
-        playerManager.initializePlayer()
-    }
-
-    LaunchedEffect(streamUrl, playerViewReady) {
-        if (playerViewReady) {
-            Log.d(logTag, "playMedia diferido (Series) URL=$streamUrl")
-            playerManager.playMedia(streamUrl, PlayerType.SERIES)
-        }
-    }
-
-    Box(
+    MiniPlayerContainer(
+        uiState = playbackState,
+        playerManager = playerManager,
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(16f / 9f)
-            .background(Color.Black)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                showControls = !showControls
+            .aspectRatio(16f / 9f),
+        controlsLocked = showTrackDialog
+    ) { state, _, setControlsVisible ->
+        SeriesMiniPlayerOverlay(
+            state = state,
+            title = episodeTitle,
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber,
+            hasTrackOptions = state.tracks.hasDialogOptions,
+            hasPrevious = hasPrevious,
+            hasNext = hasNext,
+            onClose = {
+                onClose()
+                setControlsVisible(true)
+            },
+            onReplay = { playerManager.playMedia(streamUrl, PlayerType.SERIES, forcePrepare = true) },
+            onSeekBack = { playerManager.seekBackward() },
+            onSeekForward = { playerManager.seekForward() },
+            onTogglePlay = {
+                if (state.isPlaying) playerManager.pause() else playerManager.play()
+            },
+            onShowTracks = {
+                setControlsVisible(true)
+                showTrackDialog = true
+            },
+            onFullscreen = onFullscreen,
+            onSeek = { position -> playerManager.seekTo(position) },
+            onPrevious = onPreviousEpisode,
+            onNext = onNextEpisode,
+            enablePrevious = hasPrevious,
+            enableNext = hasNext
+        )
+    }
+
+    if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
+        TrackSelectionDialog(
+            tracks = playbackState.tracks,
+            onDismiss = { showTrackDialog = false },
+            onAudioSelected = { option -> playerManager.selectAudioTrack(option.id) },
+            onSubtitleSelected = { option ->
+                if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
             }
-    ) {
-        key(streamUrl) {
-            PlayerVideoSurface(
-                streamKey = streamUrl,
-                modifier = Modifier.fillMaxSize(),
-                playerManager = playerManager,
-                onPlayerReady = { playerViewReady = true }
-            )
+        )
+    }
+}
+
+@Composable
+private fun SeriesMiniPlayerOverlay(
+    state: PlaybackUiState,
+    title: String,
+    seasonNumber: Int,
+    episodeNumber: Int,
+    hasTrackOptions: Boolean,
+    hasPrevious: Boolean,
+    hasNext: Boolean,
+    onClose: () -> Unit,
+    onReplay: () -> Unit,
+    onSeekBack: () -> Unit,
+    onSeekForward: () -> Unit,
+    onTogglePlay: () -> Unit,
+    onShowTracks: () -> Unit,
+    onFullscreen: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    enablePrevious: Boolean,
+    enableNext: Boolean
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                    )
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .align(Alignment.TopCenter),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "T$seasonNumber · E$episodeNumber",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.LightGray
+                )
+                Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
+            }
+            IconButton(onClick = onClose) {
+                Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+            }
         }
 
-        // Controls overlay
-        AnimatedVisibility(
-            visible = showControls || !uiState.isPlaying || uiState.hasError,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize()
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                // Semi-transparent background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f))
+            if (state.hasError) {
+                Text(
+                    text = state.errorMessage ?: "Contenido no disponible",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium
                 )
-
-                // Top bar with episode info and CLOSE button (TOP RIGHT)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .background(
-                            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Black.copy(alpha = 0.7f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "T$seasonNumber E$episodeNumber",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
-                        )
-                        Text(
-                            text = episodeTitle,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White
-                        )
-                    }
-                    // CLOSE button - TOP RIGHT
-                    IconButton(onClick = onClose) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cerrar",
-                            tint = Color.White
-                        )
-                    }
+                FilledTonalButton(onClick = onReplay) {
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
+                    Text(text = "Reintentar", modifier = Modifier.padding(start = 8.dp))
                 }
-
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    if (uiState.hasError) {
-                        Text(
-                            text = "Contenido no disponible",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = onPreviousEpisode,
-                            enabled = hasPrevious,
-                            modifier = Modifier.size(48.dp)
-                        ) { Icon(Icons.Default.SkipPrevious, contentDescription = "Episodio anterior", tint = if (hasPrevious) Color.White else Color.Gray, modifier = Modifier.size(36.dp)) }
-
-                        if (uiState.hasError) {
-                            OutlinedButton(onClick = {
-                                uiState.hasError = false
-                                scope.launch {
-                                    delay(100)
-                                    playerManager.playMedia(streamUrl, PlayerType.SERIES)
-                                }
-                            }) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Reintentar", tint = Color.White, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Reintentar")
-                            }
-                        } else {
-                            IconButton(
-                                onClick = {
-                                    if (uiState.isPlaying) {
-                                        playerManager.pause()
-                                    } else {
-                                        playerManager.play()
-                                    }
-                                    showControls = true
-                                },
-                                modifier = Modifier.size(64.dp)
-                            ) { Icon(if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (uiState.isPlaying) "Pausar" else "Reproducir", tint = Color.White, modifier = Modifier.size(48.dp)) }
-                        }
-
-                        IconButton(
-                            onClick = onNextEpisode,
-                            enabled = hasNext,
-                            modifier = Modifier.size(48.dp)
-                        ) { Icon(Icons.Default.SkipNext, contentDescription = "Episodio siguiente", tint = if (hasNext) Color.White else Color.Gray, modifier = Modifier.size(36.dp)) }
-                    }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onPrevious, enabled = enablePrevious) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Anterior",
+                        tint = if (enablePrevious) Color.White else Color.Gray
+                    )
                 }
-
-                // Bottom right buttons (Audio/Subtitles + Fullscreen)
-                val hasTracksAvailable = hasAudioOrSubtitleTracks(playerManager.getPlayer())
-
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Audio/Subtitles button - only if tracks available
-                    if (hasTracksAvailable) {
-                        IconButton(onClick = {
-                            showTrackSelector = true
-                            showControls = true
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Audio y Subtítulos",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    // FULLSCREEN button
-                    IconButton(onClick = onFullscreen) {
-                        Icon(
-                            imageVector = Icons.Default.Fullscreen,
-                            contentDescription = "Pantalla completa",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                IconButton(onClick = onSeekBack) {
+                    Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
                 }
-
-
-
-                // Track Selector Dialog
-                if (showTrackSelector) {
-                    TrackSelectorDialog(
-                        player = playerManager.getPlayer(),
-                        onDismiss = { showTrackSelector = false }
+                IconButton(onClick = onTogglePlay) {
+                    Icon(
+                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Pausar" else "Reproducir",
+                        tint = Color.White
+                    )
+                }
+                IconButton(onClick = onSeekForward) {
+                    Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
+                }
+                IconButton(onClick = onNext, enabled = enableNext) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Siguiente",
+                        tint = if (enableNext) Color.White else Color.Gray
                     )
                 }
             }
         }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (hasTrackOptions) {
+                IconButton(onClick = onShowTracks) {
+                    Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
+                }
+            }
+            IconButton(onClick = onFullscreen) {
+                Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Pantalla completa", tint = Color.White)
+            }
+        }
+
+        PlaybackProgress(
+            state = state,
+            onSeek = onSeek,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                    )
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        )
     }
 }
