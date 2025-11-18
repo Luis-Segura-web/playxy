@@ -63,6 +63,7 @@ fun FullscreenPlayer(
 ) {
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
+    val playerContainer = LocalPlayerContainerHost.current
 
     BackHandler { onBack() }
 
@@ -72,41 +73,43 @@ fun FullscreenPlayer(
 
     ImmersiveMode()
 
-    MiniPlayerContainer(
-        uiState = playbackState,
-        playerManager = playerManager,
-        modifier = modifier.fillMaxSize(),
-        controlsLocked = showTrackDialog
-    ) { state, _, setControlsVisible ->
-        FullscreenOverlay(
-            state = state,
-            title = title,
-            playerType = playerType,
-            hasTrackOptions = state.tracks.hasDialogOptions,
-            hasProgress = playerType != PlayerType.TV,
-            hasPrevious = hasPrevious,
-            hasNext = hasNext,
-            onBack = {
-                onBack()
-                setControlsVisible(true)
-            },
-            onShowTracks = {
-                setControlsVisible(true)
-                showTrackDialog = true
-            },
-            onTogglePlay = {
-                if (state.isPlaying) playerManager.pause() else playerManager.play()
-            },
-            onSeekBack = { playerManager.seekBackward() },
-            onSeekForward = { playerManager.seekForward() },
-            onRetry = { playerManager.playMedia(streamUrl, playerType, forcePrepare = true) },
-            onSeek = { position -> playerManager.seekTo(position) },
-            onPrevious = onPreviousItem,
-            onNext = onNextItem,
-            enablePrevious = hasPrevious,
-            enableNext = hasNext
+    playerContainer(
+        PlayerContainerConfig(
+            state = playbackState,
+            modifier = modifier.fillMaxSize(),
+            controlsLocked = showTrackDialog,
+            overlay = { state, _, setControlsVisible ->
+                FullscreenOverlay(
+                    state = state,
+                    title = title,
+                    playerType = playerType,
+                    hasTrackOptions = state.tracks.hasDialogOptions,
+                    hasProgress = playerType != PlayerType.TV,
+                    hasPrevious = hasPrevious,
+                    hasNext = hasNext,
+                    onBack = {
+                        onBack()
+                        setControlsVisible(true)
+                    },
+                    onShowTracks = {
+                        setControlsVisible(true)
+                        showTrackDialog = true
+                    },
+                    onTogglePlay = {
+                        if (state.isPlaying) playerManager.pause() else playerManager.play()
+                    },
+                    onSeekBack = { playerManager.seekBackward() },
+                    onSeekForward = { playerManager.seekForward() },
+                    onRetry = { playerManager.playMedia(streamUrl, playerType, forcePrepare = true) },
+                    onSeek = { position -> playerManager.seekTo(position) },
+                    onPrevious = onPreviousItem,
+                    onNext = onNextItem,
+                    enablePrevious = hasPrevious,
+                    enableNext = hasNext
+                )
+            }
         )
-    }
+    )
 
     if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
         TrackSelectionDialog(
@@ -289,7 +292,7 @@ private fun ImmersiveMode() {
         }
 
         onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             val disposeWindow = activity?.window
             if (disposeWindow != null) {
                 val controller = WindowCompat.getInsetsController(disposeWindow, disposeWindow.decorView)

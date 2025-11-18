@@ -255,6 +255,10 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         player.clearMediaItems()
         currentRequest = null
         trackLookup = emptyMap()
+        currentPlayerView?.let {
+            PlayerView.switchTargetView(player, it, null)
+            currentPlayerView = null
+        }
         _uiState.value = PlaybackUiState()
         updateForegroundPlayback(false)
         nextAction = null

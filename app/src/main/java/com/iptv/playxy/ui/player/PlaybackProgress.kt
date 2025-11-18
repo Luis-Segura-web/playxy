@@ -136,11 +136,12 @@ fun PlaybackProgress(
             )
         }
 
+        val clampedSpacing = if (bottomSpacing < 0.dp) 0.dp else bottomSpacing
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
-                .padding(top = bottomSpacing),
+                .padding(top = clampedSpacing),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(

@@ -55,35 +55,39 @@ fun TVMiniPlayer(
         playerManager.playMedia(streamUrl, PlayerType.TV)
     }
 
-    MiniPlayerContainer(
-        uiState = playbackState,
-        playerManager = playerManager,
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f),
-        controlsLocked = showTrackDialog
-    ) { state, _, setControlsVisible ->
-        TVMiniOverlay(
-            state = state,
-            channelName = channelName,
-            hasTrackOptions = state.tracks.hasDialogOptions,
-            onClose = {
-                onClose()
-                setControlsVisible(true)
-            },
-            onReplay = { playerManager.playMedia(streamUrl, PlayerType.TV, forcePrepare = true) },
-            onTogglePlay = {
-                if (state.isPlaying) playerManager.pause() else playerManager.play()
-            },
-            onPrevious = onPreviousChannel,
-            onNext = onNextChannel,
-            onShowTracks = {
-                setControlsVisible(true)
-                showTrackDialog = true
-            },
-            onFullscreen = onFullscreen
+    val playerContainer = LocalPlayerContainerHost.current
+
+    playerContainer(
+        PlayerContainerConfig(
+            state = playbackState,
+            modifier = modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f),
+            controlsLocked = showTrackDialog,
+            overlay = { state, _, setControlsVisible ->
+                TVMiniOverlay(
+                    state = state,
+                    channelName = channelName,
+                    hasTrackOptions = state.tracks.hasDialogOptions,
+                    onClose = {
+                        onClose()
+                        setControlsVisible(true)
+                    },
+                    onReplay = { playerManager.playMedia(streamUrl, PlayerType.TV, forcePrepare = true) },
+                    onTogglePlay = {
+                        if (state.isPlaying) playerManager.pause() else playerManager.play()
+                    },
+                    onPrevious = onPreviousChannel,
+                    onNext = onNextChannel,
+                    onShowTracks = {
+                        setControlsVisible(true)
+                        showTrackDialog = true
+                    },
+                    onFullscreen = onFullscreen
+                )
+            }
         )
-    }
+    )
 
     if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
         TrackSelectionDialog(

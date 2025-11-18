@@ -49,40 +49,44 @@ fun MovieMiniPlayer(
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
 
+    val playerContainer = LocalPlayerContainerHost.current
+
     LaunchedEffect(streamUrl) {
         playerManager.playMedia(streamUrl, PlayerType.MOVIE)
     }
 
-    MiniPlayerContainer(
-        uiState = playbackState,
-        playerManager = playerManager,
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f),
-        controlsLocked = showTrackDialog
-    ) { state, _, setControlsVisible ->
-        MovieMiniPlayerOverlay(
-            title = movieTitle,
-            state = state,
-            onClose = {
-                onClose()
-                setControlsVisible(true)
-            },
-            onReplay = { playerManager.playMedia(streamUrl, PlayerType.MOVIE, forcePrepare = true) },
-            onSeekBack = { playerManager.seekBackward() },
-            onSeekForward = { playerManager.seekForward() },
-            onTogglePlay = {
-                if (state.isPlaying) playerManager.pause() else playerManager.play()
-            },
-            onFullscreen = onFullscreen,
-            onShowTracks = {
-                setControlsVisible(true)
-                showTrackDialog = true
-            },
-            onSeek = { position -> playerManager.seekTo(position) },
-            hasTrackOptions = state.tracks.hasDialogOptions
+    playerContainer(
+        PlayerContainerConfig(
+            state = playbackState,
+            modifier = modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f),
+            controlsLocked = showTrackDialog,
+            overlay = { state, _, setControlsVisible ->
+                MovieMiniPlayerOverlay(
+                    title = movieTitle,
+                    state = state,
+                    onClose = {
+                        onClose()
+                        setControlsVisible(true)
+                    },
+                    onReplay = { playerManager.playMedia(streamUrl, PlayerType.MOVIE, forcePrepare = true) },
+                    onSeekBack = { playerManager.seekBackward() },
+                    onSeekForward = { playerManager.seekForward() },
+                    onTogglePlay = {
+                        if (state.isPlaying) playerManager.pause() else playerManager.play()
+                    },
+                    onFullscreen = onFullscreen,
+                    onShowTracks = {
+                        setControlsVisible(true)
+                        showTrackDialog = true
+                    },
+                    onSeek = { position -> playerManager.seekTo(position) },
+                    hasTrackOptions = state.tracks.hasDialogOptions
+                )
+            }
         )
-    }
+    )
 
     if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
         TrackSelectionDialog(
@@ -188,13 +192,12 @@ private fun MovieMiniPlayerOverlay(
                     )
                 )
                 .padding(horizontal = 12.dp)
-                .padding(top = 1.dp, bottom = 0.dp)
         ) {
             PlaybackProgress(
                 state = state,
                 onSeek = onSeek,
                 modifier = Modifier.fillMaxWidth(),
-                bottomSpacing = 0.dp,
+                bottomSpacing = (-4).dp,
                 trailingContent = {
                     if (hasTrackOptions) {
                         IconButton(onClick = onShowTracks) {

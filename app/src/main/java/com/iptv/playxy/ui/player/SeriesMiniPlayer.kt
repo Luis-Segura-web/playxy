@@ -62,45 +62,49 @@ fun SeriesMiniPlayer(
         playerManager.playMedia(streamUrl, PlayerType.SERIES)
     }
 
-    MiniPlayerContainer(
-        uiState = playbackState,
-        playerManager = playerManager,
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f),
-        controlsLocked = showTrackDialog
-    ) { state, _, setControlsVisible ->
-        SeriesMiniPlayerOverlay(
-            state = state,
-            title = episodeTitle,
-            seasonNumber = seasonNumber,
-            episodeNumber = episodeNumber,
-            hasTrackOptions = state.tracks.hasDialogOptions,
-            hasPrevious = hasPrevious,
-            hasNext = hasNext,
-            showEpisodeControls = showEpisodeControls,
-            onClose = {
-                onClose()
-                setControlsVisible(true)
-            },
-            onReplay = { playerManager.playMedia(streamUrl, PlayerType.SERIES, forcePrepare = true) },
-            onSeekBack = { playerManager.seekBackward() },
-            onSeekForward = { playerManager.seekForward() },
-            onTogglePlay = {
-                if (state.isPlaying) playerManager.pause() else playerManager.play()
-            },
-            onShowTracks = {
-                setControlsVisible(true)
-                showTrackDialog = true
-            },
-            onFullscreen = onFullscreen,
-            onSeek = { position -> playerManager.seekTo(position) },
-            onPrevious = onPreviousEpisode,
-            onNext = onNextEpisode,
-            enablePrevious = hasPrevious,
-            enableNext = hasNext
+    val playerContainer = LocalPlayerContainerHost.current
+
+    playerContainer(
+        PlayerContainerConfig(
+            state = playbackState,
+            modifier = modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f),
+            controlsLocked = showTrackDialog,
+            overlay = { state, _, setControlsVisible ->
+                SeriesMiniPlayerOverlay(
+                    state = state,
+                    title = episodeTitle,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber,
+                    hasTrackOptions = state.tracks.hasDialogOptions,
+                    hasPrevious = hasPrevious,
+                    hasNext = hasNext,
+                    showEpisodeControls = showEpisodeControls,
+                    onClose = {
+                        onClose()
+                        setControlsVisible(true)
+                    },
+                    onReplay = { playerManager.playMedia(streamUrl, PlayerType.SERIES, forcePrepare = true) },
+                    onSeekBack = { playerManager.seekBackward() },
+                    onSeekForward = { playerManager.seekForward() },
+                    onTogglePlay = {
+                        if (state.isPlaying) playerManager.pause() else playerManager.play()
+                    },
+                    onShowTracks = {
+                        setControlsVisible(true)
+                        showTrackDialog = true
+                    },
+                    onFullscreen = onFullscreen,
+                    onSeek = { position -> playerManager.seekTo(position) },
+                    onPrevious = onPreviousEpisode,
+                    onNext = onNextEpisode,
+                    enablePrevious = hasPrevious,
+                    enableNext = hasNext
+                )
+            }
         )
-    }
+    )
 
     if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
         TrackSelectionDialog(
@@ -254,13 +258,12 @@ private fun SeriesMiniPlayerOverlay(
                     )
                 )
                 .padding(horizontal = 12.dp)
-                .padding(top = 1.dp, bottom = 0.dp)
         ) {
             PlaybackProgress(
                 state = state,
                 onSeek = onSeek,
                 modifier = Modifier.fillMaxWidth(),
-                bottomSpacing = 0.dp,
+                bottomSpacing = (-4).dp,
                 trailingContent = {
                     if (hasTrackOptions) {
                         IconButton(onClick = onShowTracks) {

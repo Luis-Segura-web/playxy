@@ -32,7 +32,9 @@ import com.iptv.playxy.ui.movies.MovieDetailScreen
 import com.iptv.playxy.ui.series.SeriesDetailScreen
 import com.iptv.playxy.ui.splash.SplashScreen
 import com.iptv.playxy.ui.theme.PlayxyTheme
+import com.iptv.playxy.ui.player.LocalPlayerContainerHost
 import com.iptv.playxy.ui.player.PlayerManager
+import com.iptv.playxy.ui.player.rememberPlayerContainerHost
 import com.iptv.playxy.ui.pip.PipController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -56,10 +58,12 @@ class MainActivity : ComponentActivity() {
         pipController = PipController(this, playerManager, fullscreenState)
         setContent {
             PlayxyTheme {
+                val playerContainerHost = rememberPlayerContainerHost(playerManager)
                 CompositionLocalProvider(
                     LocalFullscreenState provides fullscreenState,
                     LocalPlayerManager provides playerManager,
-                    LocalPipController provides pipController
+                    LocalPipController provides pipController,
+                    LocalPlayerContainerHost provides playerContainerHost
                 ) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
