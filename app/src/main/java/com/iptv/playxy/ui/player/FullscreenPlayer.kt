@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward10
@@ -141,38 +142,42 @@ private fun FullscreenOverlay(
     enableNext: Boolean
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent)
+                        colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
                     )
                 )
                 .padding(horizontal = 16.dp, vertical = 12.dp)
-                .align(Alignment.TopCenter),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .align(Alignment.TopCenter)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Volver",
-                        tint = Color.White
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver",
+                            tint = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-            }
-            if (hasTrackOptions) {
-                IconButton(onClick = onShowTracks) {
-                    Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
+                if (hasTrackOptions) {
+                    IconButton(onClick = onShowTracks) {
+                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
+                    }
                 }
             }
         }
@@ -195,6 +200,9 @@ private fun FullscreenOverlay(
             }
 
             Row(
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
+                    .padding(horizontal = 24.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(28.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -237,18 +245,23 @@ private fun FullscreenOverlay(
         }
 
         if (hasProgress) {
-            PlaybackProgress(
-                state = state,
-                onSeek = onSeek,
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                         )
                     )
                     .padding(horizontal = 24.dp, vertical = 18.dp)
-            )
+            ) {
+                PlaybackProgress(
+                    state = state,
+                    onSeek = onSeek,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }

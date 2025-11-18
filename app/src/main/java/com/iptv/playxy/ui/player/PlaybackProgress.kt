@@ -1,5 +1,6 @@
 package com.iptv.playxy.ui.player
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,10 +9,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -27,7 +28,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,6 +41,7 @@ fun PlaybackProgress(
     state: PlaybackUiState,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    bottomSpacing: Dp = 4.dp,
     trailingContent: (@Composable RowScope.() -> Unit)? = null
 ) {
     if (state.durationMs <= 0L) return
@@ -49,30 +55,53 @@ fun PlaybackProgress(
         }
     }
 
+    val durationFloat = duration.toFloat()
     Column(modifier = modifier) {
+        val bufferFraction = (state.bufferedPositionMs.toFloat() / durationFloat).coerceIn(0f, 1f)
+        val progressFraction = (sliderPosition / durationFloat).coerceIn(0f, 1f)
+        val baseTrackColor = Color.White.copy(alpha = 0.2f)
+        val bufferTrackColor = Color.White.copy(alpha = 0.45f)
+        val playedColor = MaterialTheme.colorScheme.primary
+        val trackHeight = 4.dp
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(28.dp)
-                .padding(horizontal = 4.dp),
+                .height(32.dp)
+                .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
         ) {
-            val trackShape = RoundedCornerShape(999.dp)
-            Box(
+            Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(trackShape)
-                    .background(Color.White.copy(alpha = 0.25f))
-            )
-            val bufferFraction = (state.bufferedPositionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(bufferFraction)
-                    .height(4.dp)
-                    .clip(trackShape)
-                    .background(Color.White.copy(alpha = 0.45f))
-            )
+                    .height(trackHeight)
+            ) {
+                val cornerRadius = CornerRadius(size.height / 2f, size.height / 2f)
+                drawRoundRect(
+                    color = baseTrackColor,
+                    size = size,
+                    cornerRadius = cornerRadius
+                )
+
+                val playedWidth = size.width * progressFraction
+                if (playedWidth > 0f) {
+                    drawRoundRect(
+                        color = playedColor,
+                        size = Size(width = playedWidth, height = size.height),
+                        cornerRadius = cornerRadius
+                    )
+                }
+
+                val bufferedWidth = (bufferFraction - progressFraction).coerceAtLeast(0f) * size.width
+                if (bufferedWidth > 0f) {
+                    drawRect(
+                        color = bufferTrackColor,
+                        topLeft = Offset(x = playedWidth, y = 0f),
+                        size = Size(width = bufferedWidth, height = size.height)
+                    )
+                }
+            }
+
             Slider(
                 value = sliderPosition,
                 onValueChange = {
@@ -94,13 +123,14 @@ fun PlaybackProgress(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(28.dp),
+                    .height(32.dp),
                 thumb = {
                     Box(
                         modifier = Modifier
                             .size(12.dp)
+                            .offset(y = 2.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
+                            .background(playedColor)
                     )
                 }
             )
@@ -109,7 +139,8 @@ fun PlaybackProgress(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 8.dp)
+                .padding(top = bottomSpacing),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(

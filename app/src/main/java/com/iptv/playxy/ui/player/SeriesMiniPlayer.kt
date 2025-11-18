@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forward10
@@ -137,29 +138,33 @@ private fun SeriesMiniPlayerOverlay(
     enableNext: Boolean
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                        colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
                     )
                 )
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .align(Alignment.TopCenter),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .align(Alignment.TopCenter)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "T$seasonNumber · E$episodeNumber",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.LightGray
-                )
-                Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
-            }
-            IconButton(onClick = onClose) {
-                Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "T$seasonNumber · E$episodeNumber",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.LightGray
+                    )
+                    Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
+                }
+                IconButton(onClick = onClose) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+                }
             }
         }
 
@@ -168,6 +173,9 @@ private fun SeriesMiniPlayerOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            val controlsModifier = Modifier
+                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
+                .padding(horizontal = 16.dp, vertical = 8.dp)
             if (state.hasError) {
                 Text(
                     text = state.errorMessage ?: "Contenido no disponible",
@@ -181,6 +189,7 @@ private fun SeriesMiniPlayerOverlay(
             }
             if (showEpisodeControls) {
                 Row(
+                    modifier = controlsModifier,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -214,6 +223,7 @@ private fun SeriesMiniPlayerOverlay(
                 }
             } else {
                 Row(
+                    modifier = controlsModifier,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -240,15 +250,17 @@ private fun SeriesMiniPlayerOverlay(
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                     )
                 )
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(horizontal = 12.dp)
+                .padding(top = 1.dp, bottom = 0.dp)
         ) {
             PlaybackProgress(
                 state = state,
                 onSeek = onSeek,
                 modifier = Modifier.fillMaxWidth(),
+                bottomSpacing = 0.dp,
                 trailingContent = {
                     if (hasTrackOptions) {
                         IconButton(onClick = onShowTracks) {
