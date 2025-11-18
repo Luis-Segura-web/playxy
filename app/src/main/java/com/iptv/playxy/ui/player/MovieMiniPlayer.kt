@@ -171,33 +171,32 @@ private fun MovieMiniPlayerOverlay(
             }
         }
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (hasTrackOptions) {
-                IconButton(onClick = onShowTracks) {
-                    Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
-                }
-            }
-            IconButton(onClick = onFullscreen) {
-                Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Pantalla completa", tint = Color.White)
-            }
-        }
-
-        PlaybackProgress(
-            state = state,
-            onSeek = onSeek,
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
                     )
                 )
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        )
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            PlaybackProgress(
+                state = state,
+                onSeek = onSeek,
+                modifier = Modifier.fillMaxWidth(),
+                trailingContent = {
+                    if (hasTrackOptions) {
+                        IconButton(onClick = onShowTracks) {
+                            Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
+                        }
+                    }
+                    IconButton(onClick = onFullscreen) {
+                        Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Pantalla completa", tint = Color.White)
+                    }
+                }
+            )
+        }
     }
 }

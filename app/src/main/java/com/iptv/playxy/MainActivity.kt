@@ -1,5 +1,6 @@
 package com.iptv.playxy
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,6 +22,7 @@ import androidx.navigation.navArgument
 import com.iptv.playxy.data.repository.IptvRepository
 import com.iptv.playxy.domain.VodStream
 import com.iptv.playxy.ui.LocalFullscreenState
+import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.Routes
 import com.iptv.playxy.ui.loading.LoadingScreen
@@ -31,6 +33,7 @@ import com.iptv.playxy.ui.series.SeriesDetailScreen
 import com.iptv.playxy.ui.splash.SplashScreen
 import com.iptv.playxy.ui.theme.PlayxyTheme
 import com.iptv.playxy.ui.player.PlayerManager
+import com.iptv.playxy.ui.pip.PipController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.launch
@@ -38,21 +41,25 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    private val fullscreenState = mutableStateOf(false)
+
     @Inject
     lateinit var repository: IptvRepository
 
     @Inject
     lateinit var playerManager: PlayerManager
 
+    private lateinit var pipController: PipController
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pipController = PipController(this, playerManager, fullscreenState)
         setContent {
-            val isFullscreen = remember { mutableStateOf(false) }
-
             PlayxyTheme {
                 CompositionLocalProvider(
-                    LocalFullscreenState provides isFullscreen,
-                    LocalPlayerManager provides playerManager
+                    LocalFullscreenState provides fullscreenState,
+                    LocalPlayerManager provides playerManager,
+                    LocalPipController provides pipController
                 ) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -62,6 +69,27 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipController.handlePictureInPictureModeChanged(isInPictureInPictureMode, isFinishing)
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode)
+        pipController.handlePictureInPictureModeChanged(isInPictureInPictureMode, isFinishing)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        maybeEnterBackgroundPip()
+    }
+
+    private fun maybeEnterBackgroundPip() {
+        if (!isInPictureInPictureMode && playerManager.hasActivePlayback()) {
+            pipController.requestPip(onClose = { playerManager.stopPlayback() })
         }
     }
 }

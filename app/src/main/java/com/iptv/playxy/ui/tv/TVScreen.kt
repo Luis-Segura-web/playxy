@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.player.FullscreenPlayer
@@ -21,57 +21,100 @@ import com.iptv.playxy.util.StreamUrlBuilder
 fun TVScreen(
     viewModel: TVViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
     val currentChannel by viewModel.currentChannel.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val filteredChannels by viewModel.filteredChannels.collectAsState()
     val favoriteChannelIds by viewModel.favoriteChannelIds.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
-
-    var isFullscreenLocal by remember { mutableStateOf(false) }
-    val globalFullscreenState = LocalFullscreenState.current
-
-    // Sync local fullscreen state with global state
-    LaunchedEffect(isFullscreenLocal) {
-        globalFullscreenState.value = isFullscreenLocal
-    }
-
-    // Shared PlayerManager instance - survives composition changes
     val playerManager = LocalPlayerManager.current
+    val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
+    var isChannelSwitching by remember { mutableStateOf(false) }
+    val fullscreenState = LocalFullscreenState.current
+    val isFullscreen = fullscreenState.value
 
     LaunchedEffect(Unit) {
-        viewModel.initialize(context)
+        viewModel.initialize()
     }
 
-    if (isFullscreenLocal && currentChannel != null && userProfile != null) {
+    LaunchedEffect(playbackState.streamUrl) {
+        if (playbackState.streamUrl == null && currentChannel != null && !isChannelSwitching) {
+            viewModel.stopPlayback()
+            fullscreenState.value = false
+        }
+        if (playbackState.streamUrl != null) {
+            isChannelSwitching = false
+        }
+    }
+
+    if (isFullscreen && currentChannel != null && userProfile != null) {
+        DisposableEffect(currentChannel!!.streamId) {
+            playerManager.setTransportActions(
+                onNext = {
+                    isChannelSwitching = true
+                    viewModel.playNextChannel()
+                },
+                onPrevious = {
+                    isChannelSwitching = true
+                    viewModel.playPreviousChannel()
+                }
+            )
+            onDispose { playerManager.setTransportActions(null, null) }
+        }
         // Fullscreen player in landscape mode
         FullscreenPlayer(
             streamUrl = StreamUrlBuilder.buildLiveStreamUrl(userProfile!!, currentChannel!!),
             title = currentChannel!!.name,
             playerType = PlayerType.TV,
             playerManager = playerManager,
-            onBack = { isFullscreenLocal = false },
-            onPreviousItem = { viewModel.playPreviousChannel() },
-            onNextItem = { viewModel.playNextChannel() },
+            onBack = { fullscreenState.value = false },
+            onPreviousItem = {
+                isChannelSwitching = true
+                viewModel.playPreviousChannel()
+            },
+            onNextItem = {
+                isChannelSwitching = true
+                viewModel.playNextChannel()
+            },
             hasPrevious = viewModel.hasPreviousChannel(),
             hasNext = viewModel.hasNextChannel()
         )
     } else {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Mini player when channel is playing
-            if (currentChannel != null && userProfile != null) {
+            val shouldShowMiniPlayer = currentChannel != null && userProfile != null &&
+                (playbackState.streamUrl != null || isChannelSwitching)
+            if (shouldShowMiniPlayer) {
+                DisposableEffect(currentChannel!!.streamId) {
+                    playerManager.setTransportActions(
+                        onNext = {
+                            isChannelSwitching = true
+                            viewModel.playNextChannel()
+                        },
+                        onPrevious = {
+                            isChannelSwitching = true
+                            viewModel.playPreviousChannel()
+                        }
+                    )
+                    onDispose { playerManager.setTransportActions(null, null) }
+                }
                 TVMiniPlayer(
                     streamUrl = StreamUrlBuilder.buildLiveStreamUrl(userProfile!!, currentChannel!!),
                     channelName = currentChannel!!.name,
                     playerManager = playerManager,
-                    onPreviousChannel = { viewModel.playPreviousChannel() },
-                    onNextChannel = { viewModel.playNextChannel() },
-                    onClose = {
-                        playerManager.pause()
-                        viewModel.stopPlayback()
+                    onPreviousChannel = {
+                        isChannelSwitching = true
+                        viewModel.playPreviousChannel()
                     },
-                    onFullscreen = { isFullscreenLocal = true }
+                    onNextChannel = {
+                        isChannelSwitching = true
+                        viewModel.playNextChannel()
+                    },
+                    onClose = {
+                        isChannelSwitching = false
+                        viewModel.stopPlayback()
+                        fullscreenState.value = false
+                    },
+                    onFullscreen = { fullscreenState.value = true }
                 )
             }
 
@@ -80,7 +123,7 @@ fun TVScreen(
                 categories = categories,
                 selected = selectedCategory,
                 onCategorySelected = { category ->
-                    viewModel.selectCategory(category, context)
+                    viewModel.selectCategory(category)
                 }
             )
 
@@ -90,7 +133,8 @@ fun TVScreen(
                 favoriteChannelIds = favoriteChannelIds,
                 currentChannelId = currentChannel?.streamId,
                 onChannelClick = { channel ->
-                    viewModel.playChannel(context, channel)
+                    isChannelSwitching = true
+                    viewModel.playChannel(channel)
                 },
                 onFavoriteClick = { channel ->
                     viewModel.toggleFavorite(channel)

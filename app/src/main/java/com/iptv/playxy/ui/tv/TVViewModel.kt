@@ -1,6 +1,5 @@
 package com.iptv.playxy.ui.tv
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.playxy.data.db.FavoriteChannelDao
@@ -11,8 +10,9 @@ import com.iptv.playxy.data.repository.IptvRepository
 import com.iptv.playxy.domain.Category
 import com.iptv.playxy.domain.LiveStream
 import com.iptv.playxy.domain.UserProfile
+import com.iptv.playxy.ui.player.PlayerManager
+import com.iptv.playxy.ui.player.PlayerType
 import com.iptv.playxy.util.StreamUrlBuilder
-// import com.iptv.playxy.ui.player.PlayerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +24,8 @@ import javax.inject.Inject
 class TVViewModel @Inject constructor(
     private val repository: IptvRepository,
     private val favoriteChannelDao: FavoriteChannelDao,
-    private val recentChannelDao: RecentChannelDao
+    private val recentChannelDao: RecentChannelDao,
+    private val playerManager: PlayerManager
 ) : ViewModel() {
 
 
@@ -51,8 +52,8 @@ class TVViewModel @Inject constructor(
         loadFavoriteIds()
     }
 
-    fun initialize(context: Context) {
-        loadCategories(context)
+    fun initialize() {
+        loadCategories()
     }
 
     private fun loadUserProfile() {
@@ -75,7 +76,7 @@ class TVViewModel @Inject constructor(
         return normalized.distinctBy { it.categoryId to it.categoryName.lowercase() }
     }
 
-    private fun loadCategories(context: Context) {
+    private fun loadCategories() {
         viewModelScope.launch {
             try {
                 val providerCategoriesRaw = repository.getCategories("live")
@@ -92,7 +93,7 @@ class TVViewModel @Inject constructor(
 
                 // Select "Todos" by default and play first channel if none is playing
                 if (allCategories.isNotEmpty()) {
-                    selectCategory(allCategories[0], context)
+                    selectCategory(allCategories[0])
                 }
             } catch (e: Exception) {
                 // Handle error
@@ -111,7 +112,7 @@ class TVViewModel @Inject constructor(
         }
     }
 
-    fun selectCategory(category: Category, context: Context) {
+    fun selectCategory(category: Category) {
         viewModelScope.launch {
             _selectedCategory.value = category
             filterChannels(category)
@@ -150,35 +151,30 @@ class TVViewModel @Inject constructor(
         }.distinctBy { it.streamId }
     }
 
-    fun playChannel(context: Context, channel: LiveStream) {
+    fun playChannel(channel: LiveStream) {
         viewModelScope.launch {
             _currentChannel.value = channel
+            startChannelPlayback(channel)
+            addChannelToRecents(channel)
+        }
+    }
 
-            // Get user profile to build stream URL
-            val profile = _userProfile.value
-            if (profile != null) {
-                val streamUrl = StreamUrlBuilder.buildLiveStreamUrl(profile, channel)
+    private fun startChannelPlayback(channel: LiveStream) {
+        val profile = _userProfile.value ?: return
+        val streamUrl = StreamUrlBuilder.buildLiveStreamUrl(profile, channel)
+        playerManager.playMedia(streamUrl, PlayerType.TV, forcePrepare = true)
+    }
 
-                // TODO: Use PlayerManager to play the channel
-                // PlayerManager.changeMedia(
-                //     context = context,
-                //     url = streamUrl,
-                //     title = channel.name,
-                //     type = PlayerManager.MediaType.LiveTV
-                // )
-            }
-
-            // Add to recents
-            try {
-                recentChannelDao.insertRecent(
-                    RecentChannelEntity(
-                        channelId = channel.streamId,
-                        timestamp = System.currentTimeMillis()
-                    )
+    private suspend fun addChannelToRecents(channel: LiveStream) {
+        try {
+            recentChannelDao.insertRecent(
+                RecentChannelEntity(
+                    channelId = channel.streamId,
+                    timestamp = System.currentTimeMillis()
                 )
-            } catch (e: Exception) {
-                // Handle error
-            }
+            )
+        } catch (e: Exception) {
+            // Handle error
         }
     }
 
@@ -213,53 +209,43 @@ class TVViewModel @Inject constructor(
     }
 
     fun closePlayer() {
-        _currentChannel.value = null
-        // TODO: PlayerManager.stop()
+        stopPlayback()
     }
 
     fun stopPlayback() {
+        playerManager.stopPlayback()
         _currentChannel.value = null
     }
 
     fun playNextChannel() {
-        val channels = _filteredChannels.value
-        val current = _currentChannel.value
-        if (current != null && channels.isNotEmpty()) {
-            val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
-            if (currentIndex != -1 && currentIndex < channels.size - 1) {
-                _currentChannel.value = channels[currentIndex + 1]
-            }
+        val nextChannel = findAdjacentChannel(1) ?: return
+        viewModelScope.launch {
+            _currentChannel.value = nextChannel
+            startChannelPlayback(nextChannel)
+            addChannelToRecents(nextChannel)
         }
     }
 
     fun playPreviousChannel() {
-        val channels = _filteredChannels.value
-        val current = _currentChannel.value
-        if (current != null && channels.isNotEmpty()) {
-            val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
-            if (currentIndex > 0) {
-                _currentChannel.value = channels[currentIndex - 1]
-            }
+        val previousChannel = findAdjacentChannel(-1) ?: return
+        viewModelScope.launch {
+            _currentChannel.value = previousChannel
+            startChannelPlayback(previousChannel)
+            addChannelToRecents(previousChannel)
         }
     }
 
-    fun hasNextChannel(): Boolean {
-        val channels = _filteredChannels.value
-        val current = _currentChannel.value
-        if (current != null && channels.isNotEmpty()) {
-            val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
-            return currentIndex != -1 && currentIndex < channels.size - 1
-        }
-        return false
-    }
+    fun hasNextChannel(): Boolean = findAdjacentChannel(1) != null
 
-    fun hasPreviousChannel(): Boolean {
+    fun hasPreviousChannel(): Boolean = findAdjacentChannel(-1) != null
+
+    private fun findAdjacentChannel(offset: Int): LiveStream? {
         val channels = _filteredChannels.value
-        val current = _currentChannel.value
-        if (current != null && channels.isNotEmpty()) {
-            val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
-            return currentIndex > 0
-        }
-        return false
+        val current = _currentChannel.value ?: return null
+        if (channels.isEmpty()) return null
+        val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
+        if (currentIndex == -1) return null
+        val targetIndex = currentIndex + offset
+        return if (targetIndex in channels.indices) channels[targetIndex] else null
     }
 }

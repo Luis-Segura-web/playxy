@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.playxy.ui.LocalPipController
 import kotlinx.coroutines.delay
 
 internal typealias MiniPlayerOverlay = @Composable BoxScope.(PlaybackUiState, Boolean, (Boolean) -> Unit) -> Unit
@@ -28,6 +31,14 @@ internal fun MiniPlayerContainer(
     overlay: MiniPlayerOverlay
 ) {
     val showControls = remember { mutableStateOf(true) }
+    val pipController = LocalPipController.current
+    val hideUiForPip by pipController.hidePlayerUi.collectAsStateWithLifecycle()
+
+    LaunchedEffect(hideUiForPip) {
+        if (hideUiForPip) {
+            showControls.value = false
+        }
+    }
 
     LaunchedEffect(showControls.value, uiState.isPlaying, controlsLocked) {
         if (!controlsLocked && showControls.value && uiState.isPlaying && !uiState.hasError) {
@@ -39,14 +50,23 @@ internal fun MiniPlayerContainer(
     Box(
         modifier = modifier
             .background(Color.Black)
-            .noRippleClickable(enabled = !controlsLocked) {
+            .noRippleClickable(enabled = !controlsLocked && !hideUiForPip) {
                 showControls.value = !showControls.value
             }
     ) {
-        PlayerSurface(playerManager = playerManager, modifier = Modifier.fillMaxSize())
+        if (!uiState.hasError) {
+            val keepAwake = uiState.isPlaying
+            PlayerSurface(
+                playerManager = playerManager,
+                modifier = Modifier.fillMaxSize(),
+                keepScreenOn = keepAwake
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+        }
 
         AnimatedVisibility(
-            visible = showControls.value || !uiState.isPlaying || uiState.hasError,
+            visible = (!hideUiForPip) && (showControls.value || !uiState.isPlaying || uiState.hasError),
             enter = fadeIn(),
             exit = fadeOut()
         ) {

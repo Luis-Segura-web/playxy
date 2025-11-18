@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.iptv.playxy.ui.LocalFullscreenState
+import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.MainDestination
 import com.iptv.playxy.ui.tv.TVScreen
 import com.iptv.playxy.ui.movies.MoviesScreen
@@ -30,6 +31,7 @@ fun MainScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val isFullscreen by LocalFullscreenState.current
+    val playerManager = LocalPlayerManager.current
 
     LaunchedEffect(state.isLoggingOut) {
         if (state.isLoggingOut) {
@@ -66,7 +68,14 @@ fun MainScreen(
                             },
                             label = { Text(destination.title) },
                             selected = state.currentDestination == destination,
-                            onClick = { viewModel.onDestinationChange(destination) }
+                            onClick = {
+                                if (destination == state.currentDestination) return@NavigationBarItem
+                                val leavingTv = state.currentDestination == MainDestination.TV && destination != MainDestination.TV
+                                if (leavingTv) {
+                                    playerManager.stopPlayback()
+                                }
+                                viewModel.onDestinationChange(destination)
+                            }
                         )
                     }
                 }

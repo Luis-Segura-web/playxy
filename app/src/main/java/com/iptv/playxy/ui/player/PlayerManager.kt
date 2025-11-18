@@ -19,6 +19,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import androidx.media3.ui.PlayerView
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,6 +47,7 @@ private const val POSITION_UPDATE_INTERVAL_MS = 500L
 class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val appContext = context.applicationContext
 
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setConnectTimeoutMs(25_000)
@@ -60,7 +65,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     )
 
     private val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-        .setLiveTargetOffsetMs(4_000)
+        .setLiveTargetOffsetMs(9_000)
 
     private val renderersFactory = DefaultRenderersFactory(context)
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
@@ -68,12 +73,12 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     private val loadControl = DefaultLoadControl.Builder()
         .setBufferDurationsMs(
-            /* minBufferMs = */ 20_000,
-            /* maxBufferMs = */ 90_000,
-            /* bufferForPlaybackMs = */ 1_500,
-            /* bufferForPlaybackAfterRebufferMs = */ 3_000
+            /* minBufferMs = */ 40_000,
+            /* maxBufferMs = */ 120_000,
+            /* bufferForPlaybackMs = */ 4_000,
+            /* bufferForPlaybackAfterRebufferMs = */ 8_000
         )
-        .setBackBuffer(45_000, true)
+        .setBackBuffer(0, false)
         .setPrioritizeTimeOverSizeThresholds(true)
         .build()
 
@@ -82,6 +87,10 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         .setFallbackMaxPlaybackSpeed(1.02f)
         .setMaxLiveOffsetErrorMsForUnitSpeed(1_500L)
         .build()
+
+    private var foregroundServiceActive = false
+    private var nextAction: (() -> Unit)? = null
+    private var previousAction: (() -> Unit)? = null
 
     private val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory)
         .setTrackSelector(trackSelector)
@@ -102,6 +111,11 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
             setWakeMode(C.WAKE_MODE_NETWORK)
         }
 
+    private val mediaSession = MediaSession.Builder(appContext, player)
+        .setId("PlayxyMediaSession")
+        .build()
+
+    private var currentPlayerView: PlayerView? = null
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
 
@@ -126,6 +140,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _uiState.update { it.copy(isPlaying = isPlaying, isBuffering = if (isPlaying) false else it.isBuffering) }
+                updateForegroundPlayback(isPlaying)
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -138,6 +153,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                         isBuffering = false
                     )
                 }
+                updateForegroundPlayback(false)
             }
 
             override fun onRenderedFirstFrame() {
@@ -169,7 +185,8 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         _uiState.update {
             it.copy(
                 positionMs = safePosition,
-                durationMs = safeDuration
+                durationMs = safeDuration,
+                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(safePosition).coerceAtMost(safeDuration)
             )
         }
     }
@@ -177,7 +194,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     fun playMedia(url: String, type: PlayerType = PlayerType.TV, forcePrepare: Boolean = false) {
         if (url.isBlank()) return
         val lastRequest = currentRequest
-        if (!forcePrepare && lastRequest?.url == url) {
+        if (!forcePrepare && lastRequest?.url == url && lastRequest.type == type) {
             if (player.playbackState == Player.STATE_IDLE) {
                 player.prepare()
             }
@@ -213,7 +230,9 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         if (type == PlayerType.TV) {
             builder.setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setMaxPlaybackSpeed(1.02f)
+                    .setTargetOffsetMs(9_000)
+                    .setMinPlaybackSpeed(0.97f)
+                    .setMaxPlaybackSpeed(1.03f)
                     .build()
             )
         }
@@ -229,6 +248,17 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     fun pause() {
         player.playWhenReady = false
+    }
+
+    fun stopPlayback() {
+        player.stop()
+        player.clearMediaItems()
+        currentRequest = null
+        trackLookup = emptyMap()
+        _uiState.value = PlaybackUiState()
+        updateForegroundPlayback(false)
+        nextAction = null
+        previousAction = null
     }
 
     fun seekTo(positionMs: Long) {
@@ -250,12 +280,51 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     fun isPlaying(): Boolean = player.isPlaying
 
+    fun hasActivePlayback(): Boolean {
+        val state = _uiState.value
+        return state.streamUrl != null && player.playbackState != Player.STATE_IDLE
+    }
+
+    fun setTransportActions(onNext: (() -> Unit)?, onPrevious: (() -> Unit)?) {
+        nextAction = onNext
+        previousAction = onPrevious
+    }
+
     fun getPlayer(): Player = player
+
+    fun attachPlayerView(view: PlayerView) {
+        if (currentPlayerView === view) return
+        PlayerView.switchTargetView(player, currentPlayerView, view)
+        currentPlayerView = view
+    }
+
+    fun detachPlayerView(view: PlayerView) {
+        if (currentPlayerView === view) {
+            PlayerView.switchTargetView(player, currentPlayerView, null)
+            currentPlayerView = null
+        }
+    }
 
     fun release() {
         progressJob?.cancel()
+        currentPlayerView?.let { PlayerView.switchTargetView(player, it, null) }
+        currentPlayerView = null
         player.release()
         scope.cancel()
+        updateForegroundPlayback(false)
+        nextAction = null
+        previousAction = null
+        mediaSession.release()
+    }
+
+    private fun updateForegroundPlayback(isPlaying: Boolean) {
+        if (isPlaying && !foregroundServiceActive) {
+            PlaybackForegroundService.start(appContext)
+            foregroundServiceActive = true
+        } else if (!isPlaying && foregroundServiceActive) {
+            PlaybackForegroundService.stop(appContext)
+            foregroundServiceActive = false
+        }
     }
 
     fun retryLastRequest() {

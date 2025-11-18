@@ -51,7 +51,8 @@ fun SeriesMiniPlayer(
     modifier: Modifier = Modifier,
     onFullscreen: () -> Unit = {},
     hasPrevious: Boolean = true,
-    hasNext: Boolean = true
+    hasNext: Boolean = true,
+    showEpisodeControls: Boolean = true
 ) {
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
@@ -76,6 +77,7 @@ fun SeriesMiniPlayer(
             hasTrackOptions = state.tracks.hasDialogOptions,
             hasPrevious = hasPrevious,
             hasNext = hasNext,
+            showEpisodeControls = showEpisodeControls,
             onClose = {
                 onClose()
                 setControlsVisible(true)
@@ -120,6 +122,7 @@ private fun SeriesMiniPlayerOverlay(
     hasTrackOptions: Boolean,
     hasPrevious: Boolean,
     hasNext: Boolean,
+    showEpisodeControls: Boolean,
     onClose: () -> Unit,
     onReplay: () -> Unit,
     onSeekBack: () -> Unit,
@@ -176,67 +179,87 @@ private fun SeriesMiniPlayerOverlay(
                     Text(text = "Reintentar", modifier = Modifier.padding(start = 8.dp))
                 }
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onPrevious, enabled = enablePrevious) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "Anterior",
-                        tint = if (enablePrevious) Color.White else Color.Gray
-                    )
+            if (showEpisodeControls) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onPrevious, enabled = enablePrevious) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Anterior",
+                            tint = if (enablePrevious) Color.White else Color.Gray
+                        )
+                    }
+                    IconButton(onClick = onSeekBack) {
+                        Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
+                    }
+                    IconButton(onClick = onTogglePlay) {
+                        Icon(
+                            imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (state.isPlaying) "Pausar" else "Reproducir",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(onClick = onSeekForward) {
+                        Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
+                    }
+                    IconButton(onClick = onNext, enabled = enableNext) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Siguiente",
+                            tint = if (enableNext) Color.White else Color.Gray
+                        )
+                    }
                 }
-                IconButton(onClick = onSeekBack) {
-                    Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
-                }
-                IconButton(onClick = onTogglePlay) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pausar" else "Reproducir",
-                        tint = Color.White
-                    )
-                }
-                IconButton(onClick = onSeekForward) {
-                    Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
-                }
-                IconButton(onClick = onNext, enabled = enableNext) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Siguiente",
-                        tint = if (enableNext) Color.White else Color.Gray
-                    )
+            } else {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onSeekBack) {
+                        Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
+                    }
+                    IconButton(onClick = onTogglePlay) {
+                        Icon(
+                            imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (state.isPlaying) "Pausar" else "Reproducir",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(onClick = onSeekForward) {
+                        Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
+                    }
                 }
             }
         }
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (hasTrackOptions) {
-                IconButton(onClick = onShowTracks) {
-                    Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
-                }
-            }
-            IconButton(onClick = onFullscreen) {
-                Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Pantalla completa", tint = Color.White)
-            }
-        }
-
-        PlaybackProgress(
-            state = state,
-            onSeek = onSeek,
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
                     )
                 )
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        )
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            PlaybackProgress(
+                state = state,
+                onSeek = onSeek,
+                modifier = Modifier.fillMaxWidth(),
+                trailingContent = {
+                    if (hasTrackOptions) {
+                        IconButton(onClick = onShowTracks) {
+                            Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
+                        }
+                    }
+                    IconButton(onClick = onFullscreen) {
+                        Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Pantalla completa", tint = Color.White)
+                    }
+                }
+            )
+        }
     }
 }

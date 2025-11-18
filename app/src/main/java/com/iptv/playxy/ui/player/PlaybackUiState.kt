@@ -12,7 +12,8 @@ data class PlaybackUiState(
     val firstFrameRendered: Boolean = false,
     val tracks: PlaybackTracks = PlaybackTracks(),
     val selectedAudioTrackId: String? = null,
-    val selectedSubtitleTrackId: String? = null
+    val selectedSubtitleTrackId: String? = null,
+    val bufferedPositionMs: Long = 0L
 )
 
 data class PlaybackTracks(

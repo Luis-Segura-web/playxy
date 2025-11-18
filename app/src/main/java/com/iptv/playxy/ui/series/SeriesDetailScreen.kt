@@ -22,10 +22,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.iptv.playxy.domain.Episode
 import com.iptv.playxy.domain.Series
 import com.iptv.playxy.ui.LocalFullscreenState
+import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.player.FullscreenPlayer
 import com.iptv.playxy.ui.player.PlayerManager
@@ -49,21 +52,20 @@ fun SeriesDetailScreen(
     var expandedSeason by remember { mutableIntStateOf(1) }
     var currentEpisode by remember { mutableStateOf<Episode?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
-    var isFullscreenLocal by remember { mutableStateOf(false) }
-    val globalFullscreenState = LocalFullscreenState.current
+    val fullscreenState = LocalFullscreenState.current
+    val isFullscreen = fullscreenState.value
     val snackbarHostState = remember { SnackbarHostState() }
     var lastPositionMs by remember { mutableLongStateOf(0L) }
     val seriesVm: SeriesViewModel = hiltViewModel()
     val seriesListUi by seriesVm.uiState.collectAsState()
     val snackbarScope = rememberCoroutineScope()
 
-    // Sync local fullscreen state with global state
-    LaunchedEffect(isFullscreenLocal) {
-        globalFullscreenState.value = isFullscreenLocal
-    }
-
     // Shared PlayerManager instance - survives composition changes
     val playerManager = LocalPlayerManager.current
+    val pipController = LocalPipController.current
+    val isInPip by pipController.isInPip.collectAsStateWithLifecycle()
+    val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
+    var isEpisodeSwitching by remember { mutableStateOf(false) }
 
     // Load series info when screen opens
     LaunchedEffect(seriesId, categoryId) {
@@ -81,7 +83,55 @@ fun SeriesDetailScreen(
         } ?: -1
     }
 
-    if (isFullscreenLocal && currentEpisode != null && userProfile != null) {
+    DisposableEffect(Unit) {
+        onDispose {
+            playerManager.stopPlayback()
+            isPlaying = false
+            currentEpisode = null
+            fullscreenState.value = false
+        }
+    }
+
+    LaunchedEffect(playbackState.streamUrl) {
+        if (playbackState.streamUrl == null && isPlaying && !isEpisodeSwitching) {
+            isPlaying = false
+            currentEpisode = null
+            fullscreenState.value = false
+        }
+        if (playbackState.streamUrl != null) {
+            isEpisodeSwitching = false
+        }
+    }
+
+    DisposableEffect(currentEpisode?.id, isPlaying, isFullscreen) {
+        val hasEpisode = currentEpisode != null && isPlaying
+        if (hasEpisode && uiState.series != null) {
+            val canPrev = currentEpisodeIndex > 0
+            val canNext = currentEpisodeIndex in 0 until (allEpisodes.size - 1)
+            val prevAction = if (canPrev) {
+                {
+                    isEpisodeSwitching = true
+                    playerManager.stopPlayback()
+                    currentEpisode = allEpisodes[currentEpisodeIndex - 1]
+                    viewModel.saveProgress(uiState.series!!.seriesId, currentEpisode!!, 0L)
+                }
+            } else null
+            val nextAction = if (canNext) {
+                {
+                    isEpisodeSwitching = true
+                    playerManager.stopPlayback()
+                    currentEpisode = allEpisodes[currentEpisodeIndex + 1]
+                    viewModel.saveProgress(uiState.series!!.seriesId, currentEpisode!!, 0L)
+                }
+            } else null
+            playerManager.setTransportActions(nextAction, prevAction)
+        } else {
+            playerManager.setTransportActions(null, null)
+        }
+        onDispose { playerManager.setTransportActions(null, null) }
+    }
+
+    if (isFullscreen && currentEpisode != null && userProfile != null) {
         // Fullscreen player in landscape mode
         FullscreenPlayer(
             streamUrl = StreamUrlBuilder.buildSeriesStreamUrl(
@@ -95,15 +145,19 @@ fun SeriesDetailScreen(
             onBack = {
                 // guardar posición y salir
                 lastPositionMs = playerManager.getCurrentPosition()
-                isFullscreenLocal = false
+                fullscreenState.value = false
             },
             onPreviousItem = {
                 if (currentEpisodeIndex > 0) {
+                    isEpisodeSwitching = true
+                    playerManager.stopPlayback()
                     currentEpisode = allEpisodes[currentEpisodeIndex - 1]
                 }
             },
             onNextItem = {
                 if (currentEpisodeIndex < allEpisodes.size - 1) {
+                    isEpisodeSwitching = true
+                    playerManager.stopPlayback()
                     currentEpisode = allEpisodes[currentEpisodeIndex + 1]
                 }
             },
@@ -113,39 +167,47 @@ fun SeriesDetailScreen(
     } else {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = uiState.series?.name ?: "Detalles de Serie",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBackClick) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Volver"
+                if (!isInPip) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = uiState.series?.name ?: "Detalles de Serie",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                        }
-                    },
-                    actions = {
-                        val s = uiState.series
-                        if (s != null) {
-                            val isFavorite = seriesListUi.favoriteIds.contains(s.seriesId)
+                        },
+                        navigationIcon = {
                             IconButton(onClick = {
-                                seriesVm.toggleFavorite(s.seriesId)
-                                val msg = if (isFavorite) "Quitado de favoritos" else "Añadido a favoritos"
-                                snackbarScope.launch { snackbarHostState.showSnackbar(msg) }
+                                playerManager.stopPlayback()
+                                isPlaying = false
+                                currentEpisode = null
+                                onBackClick()
+                                fullscreenState.value = false
                             }) {
                                 Icon(
-                                    imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                    contentDescription = if (isFavorite) "Quitar de favoritos" else "Agregar a favoritos"
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Volver"
                                 )
                             }
+                        },
+                        actions = {
+                            val s = uiState.series
+                            if (s != null) {
+                                val isFavorite = seriesListUi.favoriteIds.contains(s.seriesId)
+                                IconButton(onClick = {
+                                    seriesVm.toggleFavorite(s.seriesId)
+                                    val msg = if (isFavorite) "Quitado de favoritos" else "Añadido a favoritos"
+                                    snackbarScope.launch { snackbarHostState.showSnackbar(msg) }
+                                }) {
+                                    Icon(
+                                        imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                        contentDescription = if (isFavorite) "Quitar de favoritos" else "Agregar a favoritos"
+                                    )
+                                }
+                            }
                         }
-                    }
-                )
+                    )
+                }
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
         ) { paddingValues ->
@@ -168,6 +230,8 @@ fun SeriesDetailScreen(
                         playerManager = playerManager,
                         onPreviousEpisode = {
                             if (currentEpisodeIndex > 0) {
+                                isEpisodeSwitching = true
+                                playerManager.stopPlayback()
                                 currentEpisode = allEpisodes[currentEpisodeIndex - 1]
                                 // Guardar progreso al cambiar de episodio
                                 viewModel.saveProgress(uiState.series!!.seriesId, currentEpisode!!, 0L)
@@ -175,20 +239,24 @@ fun SeriesDetailScreen(
                         },
                         onNextEpisode = {
                             if (currentEpisodeIndex < allEpisodes.size - 1) {
+                                isEpisodeSwitching = true
+                                playerManager.stopPlayback()
                                 currentEpisode = allEpisodes[currentEpisodeIndex + 1]
                                 // Guardar progreso al cambiar de episodio
                                 viewModel.saveProgress(uiState.series!!.seriesId, currentEpisode!!, 0L)
                             }
                         },
                         onClose = {
-                            playerManager.pause()
+                            playerManager.stopPlayback()
                             // No liberar singleton
                             isPlaying = false
                             currentEpisode = null
+                            fullscreenState.value = false
                         },
-                        onFullscreen = { isFullscreenLocal = true },
+                        onFullscreen = { fullscreenState.value = true },
                         hasPrevious = currentEpisodeIndex > 0,
-                        hasNext = currentEpisodeIndex < allEpisodes.size - 1
+                        hasNext = currentEpisodeIndex < allEpisodes.size - 1,
+                        showEpisodeControls = !isInPip
                     )
 
                     // Guardar progreso periódicamente cada 10 segundos
@@ -286,6 +354,7 @@ fun SeriesDetailScreen(
                                                 }
                                                 Button(
                                                     onClick = {
+                                                        playerManager.stopPlayback()
                                                         currentEpisode = lastEp
                                                         isPlaying = true
                                                         // Registrar reciente
@@ -351,6 +420,7 @@ fun SeriesDetailScreen(
                                             expandedSeason = if (expandedSeason == seasonNumber) -1 else seasonNumber
                                         },
                                         onEpisodeClick = { episode ->
+                                            playerManager.stopPlayback()
                                             currentEpisode = episode
                                             isPlaying = true
                                             // Registrar reciente

@@ -19,15 +19,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.iptv.playxy.domain.VodStream
 import com.iptv.playxy.ui.LocalFullscreenState
+import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.player.FullscreenPlayer
 import com.iptv.playxy.ui.player.MovieMiniPlayer
 import com.iptv.playxy.ui.player.PlayerManager
 import com.iptv.playxy.ui.player.PlayerType
 import com.iptv.playxy.util.StreamUrlBuilder
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -41,10 +44,10 @@ fun MovieDetailScreen(
 ) {
     val context = LocalContext.current
     var isPlaying by remember { mutableStateOf(false) }
-    var isFullscreenLocal by remember { mutableStateOf(false) }
     val userProfile by viewModel.userProfile.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
-    val globalFullscreenState = LocalFullscreenState.current
+    val fullscreenState = LocalFullscreenState.current
+    val isFullscreen = fullscreenState.value
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
     var lastPositionMs by remember { mutableLongStateOf(0L) }
@@ -55,22 +58,34 @@ fun MovieDetailScreen(
         viewModel.loadMovieInfo(movie.streamId)
     }
 
-    // Clear movie info when leaving
+    // Shared PlayerManager instance - survives composition changes
+    val playerManager = LocalPlayerManager.current
+    val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
+    val pipController = LocalPipController.current
+    val isInPip by pipController.isInPip.collectAsStateWithLifecycle()
+
+    DisposableEffect(isPlaying, isFullscreen) {
+        playerManager.setTransportActions(null, null)
+        onDispose { playerManager.setTransportActions(null, null) }
+    }
+
+    LaunchedEffect(playbackState.streamUrl) {
+        if (playbackState.streamUrl == null && isPlaying) {
+            isPlaying = false
+            fullscreenState.value = false
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
+            playerManager.stopPlayback()
+            isPlaying = false
+            fullscreenState.value = false
             viewModel.clearMovieInfo()
         }
     }
 
-    // Sync local fullscreen state with global state
-    LaunchedEffect(isFullscreenLocal) {
-        globalFullscreenState.value = isFullscreenLocal
-    }
-
-    // Shared PlayerManager instance - survives composition changes
-    val playerManager = LocalPlayerManager.current
-
-    if (isFullscreenLocal && userProfile != null) {
+    if (isFullscreen && userProfile != null) {
         // Fullscreen player in landscape mode
         FullscreenPlayer(
             streamUrl = StreamUrlBuilder.buildVodStreamUrl(userProfile!!, movie),
@@ -80,43 +95,50 @@ fun MovieDetailScreen(
             onBack = {
                 // guardar posición antes de salir
                 lastPositionMs = playerManager.getCurrentPosition()
-                isFullscreenLocal = false
+                fullscreenState.value = false
                 // Mantener isPlaying = true
             }
         )
     } else {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = movie.name,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBackClick) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Volver"
+                if (!isInPip) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = movie.name,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                playerManager.stopPlayback()
+                                isPlaying = false
+                                fullscreenState.value = false
+                                onBackClick()
+                            }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Volver"
+                                )
+                            }
+                        },
+                        actions = {
+                            val isFavorite = uiState.favoriteIds.contains(movie.streamId)
+                            IconButton(onClick = {
+                                viewModel.toggleFavorite(movie.streamId)
+                                val message = if (isFavorite) "Quitado de favoritos" else "Añadido a favoritos"
+                                snackbarScope.launch { snackbarHostState.showSnackbar(message) }
+                            }) {
+                                Icon(
+                                    imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                    contentDescription = if (isFavorite) "Quitar de favoritos" else "Agregar a favoritos"
+                                )
+                            }
                         }
-                    },
-                    actions = {
-                        val isFavorite = uiState.favoriteIds.contains(movie.streamId)
-                        IconButton(onClick = {
-                            viewModel.toggleFavorite(movie.streamId)
-                            val message = if (isFavorite) "Quitado de favoritos" else "Añadido a favoritos"
-                            snackbarScope.launch { snackbarHostState.showSnackbar(message) }
-                        }) {
-                            Icon(
-                                imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                contentDescription = if (isFavorite) "Quitar de favoritos" else "Agregar a favoritos"
-                            )
-                        }
-                    }
-                )
+                    )
+                }
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
         ) { paddingValues ->
@@ -132,11 +154,12 @@ fun MovieDetailScreen(
                         movieTitle = movie.name,
                         playerManager = playerManager,
                         onClose = {
-                            playerManager.pause()
+                            playerManager.stopPlayback()
                             // No liberar singleton
                             isPlaying = false
+                            fullscreenState.value = false
                         },
-                        onFullscreen = { isFullscreenLocal = true }
+                        onFullscreen = { fullscreenState.value = true }
                     )
 
                     // Guardar progreso periódicamente cada 10 segundos
@@ -316,6 +339,7 @@ fun MovieDetailScreen(
                                     showResumeDialog = true
                                 } else {
                                     // Reproducir desde el inicio
+                                    playerManager.stopPlayback()
                                     onPlayClick(movie)
                                     isPlaying = true
                                     viewModel.onMoviePlayed(movie)
@@ -361,6 +385,7 @@ fun MovieDetailScreen(
                         if (progress != null) {
                             lastPositionMs = progress.positionMs
                         }
+                        playerManager.stopPlayback()
                         onPlayClick(movie)
                         isPlaying = true
                         viewModel.onMoviePlayed(movie)
@@ -376,6 +401,7 @@ fun MovieDetailScreen(
                         // Empezar desde el inicio
                         viewModel.deleteMovieProgress(movie.streamId)
                         lastPositionMs = 0L
+                        playerManager.stopPlayback()
                         onPlayClick(movie)
                         isPlaying = true
                         viewModel.onMoviePlayed(movie)
