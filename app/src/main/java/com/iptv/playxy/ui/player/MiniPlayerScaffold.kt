@@ -75,7 +75,7 @@ internal fun MiniPlayerContainer(
             }
         }
 
-        if (uiState.isBuffering && !uiState.firstFrameRendered) {
+        if (!hideUiForPip && uiState.isBuffering && !uiState.firstFrameRendered) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
                 color = Color.White

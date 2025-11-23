@@ -141,18 +141,22 @@ fun TVScreen(
                     // Apply search filter (accent-insensitive)
                     if (searchQuery.isNotEmpty()) {
                         val normalizedQuery = searchQuery.normalizeString()
-                        channels = channels.filter { 
-                            it.name.normalizeString().contains(normalizedQuery, ignoreCase = true)
+                        channels = channels.filter {
+                            viewModel.getNormalizedName(it).contains(normalizedQuery, ignoreCase = true)
                         }
                     }
                     
                     // Apply sorting
                     when (sortOrder) {
-                        SortOrder.A_TO_Z -> channels.sortedWith(naturalOrder())
-                        SortOrder.Z_TO_A -> channels.sortedWith(naturalOrder().reversed())
+                        SortOrder.A_TO_Z -> channels.sortedBy { viewModel.getNaturalSortKey(it) }
+                        SortOrder.Z_TO_A -> channels.sortedByDescending { viewModel.getNaturalSortKey(it) }
                         SortOrder.DATE_NEWEST, SortOrder.DATE_OLDEST, SortOrder.DEFAULT -> channels
                     }
                 }
+            }
+
+            LaunchedEffect(processedChannels) {
+                viewModel.updateOrderedChannels(processedChannels)
             }
 
             // Channel List (Scrollable, takes remaining space)
@@ -177,15 +181,4 @@ fun TVScreen(
 private fun String.normalizeString(): String {
     val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
     return normalized.replace("\\p{M}".toRegex(), "")
-}
-
-// Natural order comparator for sorting channel names
-private fun naturalOrder(): Comparator<com.iptv.playxy.domain.LiveStream> {
-    return compareBy { it.name.naturalSortKey() }
-}
-
-private fun String.naturalSortKey(): String {
-    return this.replace(Regex("\\d+")) { matchResult ->
-        matchResult.value.padStart(10, '0')
-    }
 }

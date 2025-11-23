@@ -40,6 +40,10 @@ class TVViewModel @Inject constructor(
 
     private val _filteredChannels = MutableStateFlow<List<LiveStream>>(emptyList())
     val filteredChannels: StateFlow<List<LiveStream>> = _filteredChannels.asStateFlow()
+    private val _orderedChannels = MutableStateFlow<List<LiveStream>>(emptyList())
+
+    // Cache para nombres normalizados y claves de orden natural
+    private val nameCache = mutableMapOf<String, NameCache>()
 
     private val _favoriteChannelIds = MutableStateFlow<Set<String>>(emptySet())
     val favoriteChannelIds: StateFlow<Set<String>> = _favoriteChannelIds.asStateFlow()
@@ -130,9 +134,12 @@ class TVViewModel @Inject constructor(
                 "recents" -> loadRecentChannels()
                 else -> repository.getLiveStreamsByCategory(category.categoryId)
             }
+            channels.forEach { cacheNameData(it) }
             _filteredChannels.value = channels
+            _orderedChannels.value = channels
         } catch (e: Exception) {
             _filteredChannels.value = emptyList()
+            _orderedChannels.value = emptyList()
         }
     }
 
@@ -239,8 +246,20 @@ class TVViewModel @Inject constructor(
 
     fun hasPreviousChannel(): Boolean = findAdjacentChannel(-1) != null
 
+    fun updateOrderedChannels(list: List<LiveStream>) {
+        _orderedChannels.value = list
+    }
+
+    fun getNormalizedName(channel: LiveStream): String {
+        return nameCache[channel.streamId]?.normalizedName ?: cacheNameData(channel).normalizedName
+    }
+
+    fun getNaturalSortKey(channel: LiveStream): String {
+        return nameCache[channel.streamId]?.sortKey ?: cacheNameData(channel).sortKey
+    }
+
     private fun findAdjacentChannel(offset: Int): LiveStream? {
-        val channels = _filteredChannels.value
+        val channels = _orderedChannels.value.ifEmpty { _filteredChannels.value }
         val current = _currentChannel.value ?: return null
         if (channels.isEmpty()) return null
         val currentIndex = channels.indexOfFirst { it.streamId == current.streamId }
@@ -248,4 +267,39 @@ class TVViewModel @Inject constructor(
         val targetIndex = currentIndex + offset
         return if (targetIndex in channels.indices) channels[targetIndex] else null
     }
+
+    private fun cacheNameData(channel: LiveStream): NameCache {
+        val normalized = normalizeString(channel.name)
+        val sortKey = naturalSortKey(channel.name)
+        return NameCache(normalizedName = normalized, sortKey = sortKey).also {
+            nameCache[channel.streamId] = it
+        }
+    }
+
+    private fun normalizeString(input: String): String {
+        val normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
+        return normalized.replace(accentRegex, "")
+    }
+
+    private fun naturalSortKey(input: String): String {
+        val builder = StringBuilder()
+        var lastIndex = 0
+        numberRegex.findAll(input).forEach { match ->
+            builder.append(input.substring(lastIndex, match.range.first).lowercase())
+            builder.append(match.value.padStart(10, '0'))
+            lastIndex = match.range.last + 1
+        }
+        if (lastIndex < input.length) {
+            builder.append(input.substring(lastIndex).lowercase())
+        }
+        return builder.toString()
+    }
 }
+
+private val accentRegex = Regex("\\p{M}")
+private val numberRegex = Regex("\\d+")
+
+private data class NameCache(
+    val normalizedName: String,
+    val sortKey: String
+)

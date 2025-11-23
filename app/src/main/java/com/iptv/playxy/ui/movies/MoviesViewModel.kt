@@ -50,6 +50,7 @@ class MoviesViewModel @Inject constructor(
     private val favoriteIds = mutableSetOf<String>()
     private val recentIds = ArrayDeque<String>()
     private val maxRecents = 30
+    private val nameCache = mutableMapOf<String, NameCache>()
 
     private suspend fun loadFavoriteIds() {
         val favs = favoriteVodDao.getAllFavorites()
@@ -194,6 +195,7 @@ class MoviesViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val movies = repository.getVodStreamsByCategory(categoryId)
+                movies.forEach { cacheNameData(it) }
                 _uiState.value = _uiState.value.copy(movies = movies, isLoading = false)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -207,6 +209,7 @@ class MoviesViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val movies = repository.getVodStreams().distinctBy { it.streamId }
+                movies.forEach { cacheNameData(it) }
                 _uiState.value = _uiState.value.copy(movies = movies, isLoading = false)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -284,4 +287,47 @@ class MoviesViewModel @Inject constructor(
             }
         }
     }
+
+    fun getNormalizedName(movie: VodStream): String {
+        return nameCache[movie.streamId]?.normalizedName ?: cacheNameData(movie).normalizedName
+    }
+
+    fun getNaturalSortKey(movie: VodStream): String {
+        return nameCache[movie.streamId]?.sortKey ?: cacheNameData(movie).sortKey
+    }
+
+    private fun cacheNameData(movie: VodStream): NameCache {
+        val normalized = normalizeString(movie.name)
+        val sortKey = naturalSortKey(movie.name)
+        return NameCache(normalizedName = normalized, sortKey = sortKey).also {
+            nameCache[movie.streamId] = it
+        }
+    }
+
+    private fun normalizeString(input: String): String {
+        val normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
+        return normalized.replace(accentRegex, "")
+    }
+
+    private fun naturalSortKey(input: String): String {
+        val builder = StringBuilder()
+        var lastIndex = 0
+        numberRegex.findAll(input).forEach { match ->
+            builder.append(input.substring(lastIndex, match.range.first).lowercase())
+            builder.append(match.value.padStart(10, '0'))
+            lastIndex = match.range.last + 1
+        }
+        if (lastIndex < input.length) {
+            builder.append(input.substring(lastIndex).lowercase())
+        }
+        return builder.toString()
+    }
 }
+
+private val accentRegex = Regex("\\p{M}")
+private val numberRegex = Regex("\\d+")
+
+private data class NameCache(
+    val normalizedName: String,
+    val sortKey: String
+)

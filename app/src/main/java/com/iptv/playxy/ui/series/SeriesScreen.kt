@@ -40,7 +40,6 @@ import com.iptv.playxy.ui.main.SortOrder
 import java.text.Normalizer
 
 private val accentRegex = Regex("\\p{M}")
-private val numberRegex = Regex("\\d+")
 
 @Composable
 fun SeriesScreen(
@@ -67,15 +66,15 @@ fun SeriesScreen(
                 // Apply search filter (accent-insensitive)
                 if (searchQuery.isNotEmpty()) {
                     val normalizedQuery = searchQuery.normalizeString()
-                    series = series.filter { 
-                        it.name.normalizeString().contains(normalizedQuery, ignoreCase = true)
+                    series = series.filter {
+                        viewModel.getNormalizedName(it).contains(normalizedQuery, ignoreCase = true)
                     }
                 }
                 
                 // Apply sorting
                 when (sortOrder) {
-                    SortOrder.A_TO_Z -> series.sortedWith(compareBy { it.name.naturalSortKey() })
-                    SortOrder.Z_TO_A -> series.sortedWith(compareByDescending { it.name.naturalSortKey() })
+                    SortOrder.A_TO_Z -> series.sortedBy { viewModel.getNaturalSortKey(it) }
+                    SortOrder.Z_TO_A -> series.sortedByDescending { viewModel.getNaturalSortKey(it) }
                     SortOrder.DATE_NEWEST -> series.sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }
                     SortOrder.DATE_OLDEST -> series.sortedBy { it.lastModified?.toLongOrNull() ?: Long.MAX_VALUE }
                     SortOrder.DEFAULT -> series
@@ -273,11 +272,4 @@ fun SeriesPosterItem(
 private fun String.normalizeString(): String {
     val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
     return normalized.replace(accentRegex, "")
-}
-
-// Natural sort key for sorting series names
-private fun String.naturalSortKey(): String {
-    return this.replace(numberRegex) { matchResult ->
-        matchResult.value.padStart(10, '0')
-    }
 }

@@ -39,6 +39,7 @@ class SeriesViewModel @Inject constructor(
     private val favoriteIds = mutableSetOf<String>()
     private val recentIds = ArrayDeque<String>()
     private val maxRecents = 30
+    private val nameCache = mutableMapOf<String, NameCache>()
 
     private suspend fun loadFavoriteIds() {
         val favs = favoriteSeriesDao.getAllFavorites()
@@ -112,6 +113,7 @@ class SeriesViewModel @Inject constructor(
             try {
                 val all = repository.getSeries()
                 val favs = all.filter { favoriteIds.contains(it.seriesId) }
+                favs.forEach { cacheNameData(it) }
                 _uiState.value = _uiState.value.copy(series = favs, isLoading = false)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -132,6 +134,7 @@ class SeriesViewModel @Inject constructor(
                 } else {
                     emptyList()
                 }
+                recents.forEach { cacheNameData(it) }
                 _uiState.value = _uiState.value.copy(series = recents, isLoading = false)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -172,6 +175,7 @@ class SeriesViewModel @Inject constructor(
                     series = series,
                     isLoading = false
                 )
+                series.forEach { cacheNameData(it) }
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.value = _uiState.value.copy(isLoading = false)
@@ -188,10 +192,54 @@ class SeriesViewModel @Inject constructor(
                     series = series,
                     isLoading = false
                 )
+                series.forEach { cacheNameData(it) }
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.value = _uiState.value.copy(isLoading = false)
             }
         }
     }
+
+    fun getNormalizedName(series: Series): String {
+        return nameCache[series.seriesId]?.normalizedName ?: cacheNameData(series).normalizedName
+    }
+
+    fun getNaturalSortKey(series: Series): String {
+        return nameCache[series.seriesId]?.sortKey ?: cacheNameData(series).sortKey
+    }
+
+    private fun cacheNameData(series: Series): NameCache {
+        val normalized = normalizeString(series.name)
+        val sortKey = naturalSortKey(series.name)
+        return NameCache(normalizedName = normalized, sortKey = sortKey).also {
+            nameCache[series.seriesId] = it
+        }
+    }
+
+    private fun normalizeString(input: String): String {
+        val normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
+        return normalized.replace(accentRegex, "")
+    }
+
+    private fun naturalSortKey(input: String): String {
+        val builder = StringBuilder()
+        var lastIndex = 0
+        numberRegex.findAll(input).forEach { match ->
+            builder.append(input.substring(lastIndex, match.range.first).lowercase())
+            builder.append(match.value.padStart(10, '0'))
+            lastIndex = match.range.last + 1
+        }
+        if (lastIndex < input.length) {
+            builder.append(input.substring(lastIndex).lowercase())
+        }
+        return builder.toString()
+    }
 }
+
+private val accentRegex = Regex("\\p{M}")
+private val numberRegex = Regex("\\d+")
+
+private data class NameCache(
+    val normalizedName: String,
+    val sortKey: String
+)

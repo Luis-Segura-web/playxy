@@ -35,10 +35,8 @@ class PipController(
         if (!supportsPip() || activity.isInPictureInPictureMode || _isInPip.value) return
         restoreAction = onRestore ?: {}
         closeAction = onClose ?: { playerManager.stopPlayback() }
-        fullscreenForced = hideUi && !fullscreenState.value
-        if (fullscreenForced) {
-            fullscreenState.value = true
-        }
+        // No forzar fullscreen al entrar a PiP; evita parpadeo landscape al volver.
+        fullscreenForced = false
         _hidePlayerUi.value = hideUi
         val entered = enterPipInternal()
         if (!entered) {

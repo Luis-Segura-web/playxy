@@ -31,7 +31,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptv.playxy.ui.LocalFullscreenState
+import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.MainDestination
 import com.iptv.playxy.ui.tv.TVScreen
@@ -51,8 +53,11 @@ fun MainScreen(
     onNavigateToSeriesDetail: (String, String) -> Unit
 ) {
     val state by viewModel.state.collectAsState()
-    val isFullscreen by LocalFullscreenState.current
+    val fullscreenState = LocalFullscreenState.current
+    val isFullscreen = fullscreenState.value
     val playerManager = LocalPlayerManager.current
+    val pipController = LocalPipController.current
+    val hideUiForPip by pipController.hidePlayerUi.collectAsStateWithLifecycle()
 
     LaunchedEffect(state.isLoggingOut) {
         if (state.isLoggingOut) {
@@ -72,7 +77,7 @@ fun MainScreen(
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            if (!isFullscreen) {
+            if (!isFullscreen && !hideUiForPip) {
                 // Show search bar as TopBar when searching is active
                 if (state.isSearching && state.currentDestination in listOf(
                         MainDestination.TV,
@@ -332,7 +337,7 @@ fun MainScreen(
             }
         },
         bottomBar = {
-            if (!isFullscreen) {
+            if (!isFullscreen && !hideUiForPip) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                     tonalElevation = 8.dp
@@ -373,11 +378,13 @@ fun MainScreen(
                 .fillMaxSize()
                 .background(gradient)
                 .then(
-                    // Only apply padding when not in fullscreen
-                    if (!isFullscreen) {
+                    if (!isFullscreen && !hideUiForPip) {
                         Modifier
                             .padding(paddingValues)
                             .padding(horizontal = 14.dp, vertical = 10.dp)
+                    } else if (!isFullscreen && hideUiForPip) {
+                        // Evita padding del scaffold cuando se oculta la UI por PiP
+                        Modifier
                     } else {
                         Modifier
                     }

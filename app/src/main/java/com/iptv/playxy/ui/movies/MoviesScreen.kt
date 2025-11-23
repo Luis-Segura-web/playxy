@@ -40,7 +40,6 @@ import com.iptv.playxy.ui.main.SortOrder
 import java.text.Normalizer
 
 private val accentRegex = Regex("\\p{M}")
-private val numberRegex = Regex("\\d+")
 
 @Composable
 fun MoviesScreen(
@@ -67,15 +66,15 @@ fun MoviesScreen(
                 // Apply search filter (accent-insensitive)
                 if (searchQuery.isNotEmpty()) {
                     val normalizedQuery = searchQuery.normalizeString()
-                    movies = movies.filter { 
-                        it.name.normalizeString().contains(normalizedQuery, ignoreCase = true)
+                    movies = movies.filter {
+                        viewModel.getNormalizedName(it).contains(normalizedQuery, ignoreCase = true)
                     }
                 }
                 
                 // Apply sorting
                 when (sortOrder) {
-                    SortOrder.A_TO_Z -> movies.sortedWith(compareBy { it.name.naturalSortKey() })
-                    SortOrder.Z_TO_A -> movies.sortedWith(compareByDescending { it.name.naturalSortKey() })
+                    SortOrder.A_TO_Z -> movies.sortedBy { viewModel.getNaturalSortKey(it) }
+                    SortOrder.Z_TO_A -> movies.sortedByDescending { viewModel.getNaturalSortKey(it) }
                     SortOrder.DATE_NEWEST -> movies.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
                     SortOrder.DATE_OLDEST -> movies.sortedBy { it.added?.toLongOrNull() ?: Long.MAX_VALUE }
                     SortOrder.DEFAULT -> movies
@@ -269,11 +268,4 @@ fun MoviePosterItem(
 private fun String.normalizeString(): String {
     val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
     return normalized.replace(accentRegex, "")
-}
-
-// Natural sort key for sorting movie names
-private fun String.naturalSortKey(): String {
-    return this.replace(numberRegex) { matchResult ->
-        matchResult.value.padStart(10, '0')
-    }
 }
