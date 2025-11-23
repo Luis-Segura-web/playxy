@@ -4,6 +4,7 @@ package com.iptv.playxy.ui.tv
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.*
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Modifier
@@ -11,11 +12,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPlayerManager
+import com.iptv.playxy.ui.components.CategoryBar
 import com.iptv.playxy.ui.main.SortOrder
 import com.iptv.playxy.ui.player.FullscreenPlayer
 import com.iptv.playxy.ui.player.PlayerType
 import com.iptv.playxy.ui.player.TVMiniPlayer
-import com.iptv.playxy.ui.tv.components.CategoryChipBar
 import com.iptv.playxy.ui.tv.components.ChannelListView
 import com.iptv.playxy.util.StreamUrlBuilder
 import java.text.Normalizer
@@ -123,13 +124,13 @@ fun TVScreen(
                 )
             }
 
-            // Category Chip Bar
-            CategoryChipBar(
+            CategoryBar(
                 categories = categories,
-                selected = selectedCategory,
+                selectedCategoryId = selectedCategory?.categoryId,
                 onCategorySelected = { category ->
                     viewModel.selectCategory(category)
-                }
+                },
+                modifier = Modifier.fillMaxWidth()
             )
 
             // Apply search and sort to channels

@@ -33,7 +33,9 @@ data class MainState(
     val debouncedSearchQuery: String = "",
     val isSearching: Boolean = false,
     val sortOrder: SortOrder = SortOrder.DEFAULT,
-    val lastUpdateTime: Long = 0L,
+    val lastLiveUpdateTime: Long = 0L,
+    val lastVodUpdateTime: Long = 0L,
+    val lastSeriesUpdateTime: Long = 0L,
     val isReloading: Boolean = false
 )
 
@@ -48,23 +50,27 @@ class MainViewModel @Inject constructor(
     private var searchJob: Job? = null
     
     init {
-        loadStats()
+        viewModelScope.launch {
+            loadStats()
+        }
     }
     
-    private fun loadStats() {
-        viewModelScope.launch {
-            val liveStreams = repository.getLiveStreams()
-            val vodStreams = repository.getVodStreams()
-            val series = repository.getSeries()
-            val lastUpdate = repository.getLastProviderUpdateTime()
-            
-            _state.value = _state.value.copy(
-                liveStreamCount = liveStreams.size,
-                vodStreamCount = vodStreams.size,
-                seriesCount = series.size,
-                lastUpdateTime = lastUpdate
-            )
-        }
+    private suspend fun loadStats() {
+        val liveStreams = repository.getLiveStreams()
+        val vodStreams = repository.getVodStreams()
+        val series = repository.getSeries()
+        val lastLiveUpdate = repository.getLastLiveUpdateTime()
+        val lastVodUpdate = repository.getLastVodUpdateTime()
+        val lastSeriesUpdate = repository.getLastSeriesUpdateTime()
+        
+        _state.value = _state.value.copy(
+            liveStreamCount = liveStreams.size,
+            vodStreamCount = vodStreams.size,
+            seriesCount = series.size,
+            lastLiveUpdateTime = lastLiveUpdate,
+            lastVodUpdateTime = lastVodUpdate,
+            lastSeriesUpdateTime = lastSeriesUpdate
+        )
     }
     
     fun onDestinationChange(destination: MainDestination) {
@@ -105,8 +111,18 @@ class MainViewModel @Inject constructor(
     fun onReload() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isReloading = true)
-            repository.clearCache()
-            loadStats()
+            val destination = _state.value.currentDestination
+            val result = withContext(Dispatchers.IO) {
+                when (destination) {
+                    MainDestination.TV -> repository.refreshLiveStreams()
+                    MainDestination.MOVIES -> repository.refreshVodStreams()
+                    MainDestination.SERIES -> repository.refreshSeries()
+                    else -> Result.success(Unit)
+                }
+            }
+            if (result.isSuccess) {
+                loadStats()
+            }
             _state.value = _state.value.copy(isReloading = false)
         }
     }

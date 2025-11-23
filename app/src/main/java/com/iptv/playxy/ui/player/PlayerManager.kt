@@ -57,7 +57,10 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     private val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
-    private val trackSelector = DefaultTrackSelector(context)
+    private val trackSelector = DefaultTrackSelector(context).apply {
+        // Algunos streams no informan frame rate; limitamos a 30 fps para evitar configuraciones de 1 fps en ciertos decodificadores.
+        setParameters(buildUponParameters().setMaxVideoFrameRate(30))
+    }
 
     private val dataSourceFactory = DefaultDataSource.Factory(
         context,
@@ -228,13 +231,14 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private fun buildMediaItem(url: String, type: PlayerType): MediaItem {
         val builder = MediaItem.Builder().setUri(url)
         if (type == PlayerType.TV) {
-            builder.setLiveConfiguration(
-                MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(9_000)
-                    .setMinPlaybackSpeed(0.97f)
-                    .setMaxPlaybackSpeed(1.03f)
-                    .build()
-            )
+            builder
+                .setLiveConfiguration(
+                    MediaItem.LiveConfiguration.Builder()
+                        .setTargetOffsetMs(9_000)
+                        .setMinPlaybackSpeed(0.97f)
+                        .setMaxPlaybackSpeed(1.03f)
+                        .build()
+                )
         }
         return builder.build()
     }

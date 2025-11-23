@@ -4,7 +4,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -13,7 +12,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -23,15 +28,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.iptv.playxy.domain.Series
+import com.iptv.playxy.ui.components.CategoryBar
 import com.iptv.playxy.ui.main.SortOrder
 import java.text.Normalizer
+
+private val accentRegex = Regex("\\p{M}")
+private val numberRegex = Regex("\\d+")
 
 @Composable
 fun SeriesScreen(
@@ -43,10 +52,9 @@ fun SeriesScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Category Filter
-        CategoryFilterChips(
+        CategoryBar(
             categories = uiState.categories,
-            selectedCategory = uiState.selectedCategory,
+            selectedCategoryId = uiState.selectedCategory.categoryId,
             onCategorySelected = { viewModel.selectCategory(it) },
             modifier = Modifier.fillMaxWidth()
         )
@@ -93,38 +101,6 @@ fun SeriesScreen(
                 modifier = Modifier.fillMaxSize(),
                 viewModel = viewModel
             )
-        }
-    }
-}
-
-@Composable
-fun CategoryFilterChips(
-    categories: List<com.iptv.playxy.domain.Category>,
-    selectedCategory: com.iptv.playxy.domain.Category,
-    onCategorySelected: (com.iptv.playxy.domain.Category) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        tonalElevation = 2.dp
-    ) {
-        androidx.compose.foundation.lazy.LazyRow(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(categories.size) { index ->
-                val category = categories[index]
-                val isSelected = selectedCategory.categoryId == category.categoryId
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onCategorySelected(category) },
-                    label = { Text(category.categoryName) },
-                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                )
-            }
         }
     }
 }
@@ -296,12 +272,12 @@ fun SeriesPosterItem(
 // Helper function to remove accents from strings for search
 private fun String.normalizeString(): String {
     val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
-    return normalized.replace("\\p{M}".toRegex(), "")
+    return normalized.replace(accentRegex, "")
 }
 
 // Natural sort key for sorting series names
 private fun String.naturalSortKey(): String {
-    return this.replace(Regex("\\d+")) { matchResult ->
+    return this.replace(numberRegex) { matchResult ->
         matchResult.value.padStart(10, '0')
     }
 }

@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.iptv.playxy.ui.LocalFullscreenState
@@ -138,20 +139,33 @@ fun MainScreen(
                     // Normal TopBar
                     TopAppBar(
                     title = {
-                        Column {
+                        val subtitle = when (state.currentDestination) {
+                            MainDestination.TV -> "${state.liveStreamCount} canales"
+                            MainDestination.MOVIES -> "${state.vodStreamCount} películas"
+                            MainDestination.SERIES -> "${state.seriesCount} series"
+                            else -> ""
+                        }
+                        val lastUpdateTime = when (state.currentDestination) {
+                            MainDestination.TV -> state.lastLiveUpdateTime
+                            MainDestination.MOVIES -> state.lastVodUpdateTime
+                            MainDestination.SERIES -> state.lastSeriesUpdateTime
+                            else -> 0L
+                        }
+                        val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
+                        val lastUpdateText = if (lastUpdateTime > 0) {
+                            dateFormat.format(Date(lastUpdateTime))
+                        } else {
+                            "Sin sincronizar"
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 text = state.currentDestination.title,
-                                style = MaterialTheme.typography.titleLarge
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                            val subtitle = when (state.currentDestination) {
-                                MainDestination.TV -> "${state.liveStreamCount} Canales"
-                                MainDestination.MOVIES -> "${state.vodStreamCount} Películas"
-                                MainDestination.SERIES -> "${state.seriesCount} Series"
-                                else -> ""
-                            }
                             if (subtitle.isNotEmpty()) {
                                 Text(
-                                    text = subtitle,
+                                    text = "$subtitle · $lastUpdateText",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -166,46 +180,100 @@ fun MainScreen(
                                 MainDestination.SERIES
                             )
                         ) {
-                            Column(horizontalAlignment = Alignment.End) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    // Search icon
-                                    IconButton(onClick = {
-                                        viewModel.onSearchActiveChange(!state.isSearching)
-                                    }) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                // Search icon
+                                IconButton(onClick = {
+                                    viewModel.onSearchActiveChange(!state.isSearching)
+                                }) {
+                                    Icon(
+                                        imageVector = if (state.isSearching) Icons.Default.Close else Icons.Default.Search,
+                                        contentDescription = if (state.isSearching) "Cerrar búsqueda" else "Buscar",
+                                        tint = if (state.isSearching) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+
+                                // Sort icon with dropdown menu
+                                Box {
+                                    IconButton(onClick = { sortMenuExpanded = true }) {
                                         Icon(
-                                            imageVector = if (state.isSearching) Icons.Default.Close else Icons.Default.Search,
-                                            contentDescription = if (state.isSearching) "Cerrar búsqueda" else "Buscar",
-                                            tint = if (state.isSearching) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface
+                                            imageVector = Icons.AutoMirrored.Filled.Sort,
+                                            contentDescription = "Ordenar",
+                                            tint = if (state.sortOrder != SortOrder.DEFAULT) 
+                                                MaterialTheme.colorScheme.secondary 
+                                            else 
+                                                MaterialTheme.colorScheme.onSurface
                                         )
                                     }
-
-                                    // Sort icon with dropdown menu
-                                    Box {
-                                        IconButton(onClick = { sortMenuExpanded = true }) {
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.Sort,
-                                                contentDescription = "Ordenar",
-                                                tint = if (state.sortOrder != SortOrder.DEFAULT) 
-                                                    MaterialTheme.colorScheme.secondary 
-                                                else 
-                                                    MaterialTheme.colorScheme.onSurface
+                                    DropdownMenu(
+                                        expanded = sortMenuExpanded,
+                                        onDismissRequest = { sortMenuExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Por defecto") },
+                                            onClick = {
+                                                viewModel.onSortOrderChange(SortOrder.DEFAULT)
+                                                sortMenuExpanded = false
+                                            },
+                                            leadingIcon = {
+                                                if (state.sortOrder == SortOrder.DEFAULT) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.secondary
+                                                    )
+                                                }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("A-Z") },
+                                            onClick = {
+                                                viewModel.onSortOrderChange(SortOrder.A_TO_Z)
+                                                sortMenuExpanded = false
+                                            },
+                                            leadingIcon = {
+                                                if (state.sortOrder == SortOrder.A_TO_Z) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.secondary
+                                                    )
+                                                }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Z-A") },
+                                            onClick = {
+                                                viewModel.onSortOrderChange(SortOrder.Z_TO_A)
+                                                sortMenuExpanded = false
+                                            },
+                                            leadingIcon = {
+                                                if (state.sortOrder == SortOrder.Z_TO_A) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.secondary
+                                                    )
+                                                }
+                                            }
+                                        )
+                                        
+                                        // Date sorting only for Movies and Series
+                                        if (state.currentDestination in listOf(
+                                                MainDestination.MOVIES,
+                                                MainDestination.SERIES
                                             )
-                                        }
-                                        DropdownMenu(
-                                            expanded = sortMenuExpanded,
-                                            onDismissRequest = { sortMenuExpanded = false }
                                         ) {
                                             DropdownMenuItem(
-                                                text = { Text("Por defecto") },
+                                                text = { Text("Más recientes") },
                                                 onClick = {
-                                                    viewModel.onSortOrderChange(SortOrder.DEFAULT)
+                                                    viewModel.onSortOrderChange(SortOrder.DATE_NEWEST)
                                                     sortMenuExpanded = false
                                                 },
                                                 leadingIcon = {
-                                                    if (state.sortOrder == SortOrder.DEFAULT) {
+                                                    if (state.sortOrder == SortOrder.DATE_NEWEST) {
                                                         Icon(
                                                             imageVector = Icons.Default.Check,
                                                             contentDescription = null,
@@ -215,13 +283,13 @@ fun MainScreen(
                                                 }
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("A-Z") },
+                                                text = { Text("Más antiguas") },
                                                 onClick = {
-                                                    viewModel.onSortOrderChange(SortOrder.A_TO_Z)
+                                                    viewModel.onSortOrderChange(SortOrder.DATE_OLDEST)
                                                     sortMenuExpanded = false
                                                 },
                                                 leadingIcon = {
-                                                    if (state.sortOrder == SortOrder.A_TO_Z) {
+                                                    if (state.sortOrder == SortOrder.DATE_OLDEST) {
                                                         Icon(
                                                             imageVector = Icons.Default.Check,
                                                             contentDescription = null,
@@ -229,96 +297,29 @@ fun MainScreen(
                                                         )
                                                     }
                                                 }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("Z-A") },
-                                                onClick = {
-                                                    viewModel.onSortOrderChange(SortOrder.Z_TO_A)
-                                                    sortMenuExpanded = false
-                                                },
-                                                leadingIcon = {
-                                                    if (state.sortOrder == SortOrder.Z_TO_A) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Check,
-                                                            contentDescription = null,
-                                                            tint = MaterialTheme.colorScheme.secondary
-                                                        )
-                                                    }
-                                                }
-                                            )
-                                            
-                                            // Date sorting only for Movies and Series
-                                            if (state.currentDestination in listOf(
-                                                    MainDestination.MOVIES,
-                                                    MainDestination.SERIES
-                                                )
-                                            ) {
-                                                DropdownMenuItem(
-                                                    text = { Text("Más recientes") },
-                                                    onClick = {
-                                                        viewModel.onSortOrderChange(SortOrder.DATE_NEWEST)
-                                                        sortMenuExpanded = false
-                                                    },
-                                                    leadingIcon = {
-                                                        if (state.sortOrder == SortOrder.DATE_NEWEST) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Check,
-                                                                contentDescription = null,
-                                                                tint = MaterialTheme.colorScheme.secondary
-                                                            )
-                                                        }
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text("Más antiguas") },
-                                                    onClick = {
-                                                        viewModel.onSortOrderChange(SortOrder.DATE_OLDEST)
-                                                        sortMenuExpanded = false
-                                                    },
-                                                    leadingIcon = {
-                                                        if (state.sortOrder == SortOrder.DATE_OLDEST) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Check,
-                                                                contentDescription = null,
-                                                                tint = MaterialTheme.colorScheme.secondary
-                                                            )
-                                                        }
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // Reload icon
-                                    IconButton(
-                                        onClick = { viewModel.onReload() },
-                                        enabled = !state.isReloading
-                                    ) {
-                                        if (state.isReloading) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(24.dp),
-                                                strokeWidth = 2.dp,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = Icons.Default.Refresh,
-                                                contentDescription = "Recargar",
-                                                tint = MaterialTheme.colorScheme.onSurface
                                             )
                                         }
                                     }
                                 }
-                                
-                                // Last update timestamp below icons
-                                if (state.lastUpdateTime > 0) {
-                                    val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
-                                    Text(
-                                        text = dateFormat.format(Date(state.lastUpdateTime)),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        modifier = Modifier.padding(end = 8.dp, top = 2.dp)
-                                    )
+
+                                // Reload icon
+                                IconButton(
+                                    onClick = { viewModel.onReload() },
+                                    enabled = !state.isReloading
+                                ) {
+                                    if (state.isReloading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(22.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Refresh,
+                                            contentDescription = "Recargar",
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -409,6 +410,52 @@ fun MainScreen(
                         onNavigateToLoading()
                     }
                 )
+            }
+
+            if (state.isReloading) {
+                val reloadMessage = when (state.currentDestination) {
+                    MainDestination.TV -> "Recargando canales de TV..."
+                    MainDestination.MOVIES -> "Recargando películas..."
+                    MainDestination.SERIES -> "Recargando series..."
+                    else -> "Actualizando contenido..."
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        tonalElevation = 8.dp,
+                        shadowElevation = 0.dp,
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 18.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(26.dp),
+                                strokeWidth = 3.dp
+                            )
+                            Column {
+                                Text(
+                                    text = reloadMessage,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Sincronizando con el proveedor",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

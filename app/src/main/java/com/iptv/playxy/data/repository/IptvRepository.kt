@@ -28,6 +28,10 @@ class IptvRepository @Inject constructor(
     
     // Cache expiration time (24 hours)
     private val cacheExpirationTime = 24 * 60 * 60 * 1000L
+    private val liveCacheKey = "live_content"
+    private val vodCacheKey = "vod_content"
+    private val seriesCacheKey = "series_content"
+    private val allCacheKey = "all_content"
     
     // User Profile operations
     suspend fun getProfile(): UserProfile? {
@@ -78,7 +82,10 @@ class IptvRepository @Inject constructor(
 
             // Update cache metadata
             val currentTime = System.currentTimeMillis()
-            cacheMetadataDao.insertCacheMetadata(CacheMetadata("all_content", currentTime))
+            cacheMetadataDao.insertCacheMetadata(CacheMetadata(allCacheKey, currentTime))
+            cacheMetadataDao.insertCacheMetadata(CacheMetadata(liveCacheKey, currentTime))
+            cacheMetadataDao.insertCacheMetadata(CacheMetadata(vodCacheKey, currentTime))
+            cacheMetadataDao.insertCacheMetadata(CacheMetadata(seriesCacheKey, currentTime))
             
             Result.success(Unit)
         } catch (e: Exception) {
@@ -144,10 +151,56 @@ class IptvRepository @Inject constructor(
             categoryDao.insertAll(categories.map { EntityMapper.toEntity(it, "series") })
         }
     }
+
+    /**
+     * Refresh only live streams from the provider and update cache metadata
+     */
+    suspend fun refreshLiveStreams(): Result<Unit> {
+        return refreshFromProvider(liveCacheKey) { apiService, username, password ->
+            loadLiveStreams(apiService, username, password)
+        }
+    }
+
+    /**
+     * Refresh only VOD streams from the provider and update cache metadata
+     */
+    suspend fun refreshVodStreams(): Result<Unit> {
+        return refreshFromProvider(vodCacheKey) { apiService, username, password ->
+            loadVodStreams(apiService, username, password)
+        }
+    }
+
+    /**
+     * Refresh only series from the provider and update cache metadata
+     */
+    suspend fun refreshSeries(): Result<Unit> {
+        return refreshFromProvider(seriesCacheKey) { apiService, username, password ->
+            loadSeries(apiService, username, password)
+        }
+    }
+
+    private suspend fun refreshFromProvider(
+        cacheKey: String,
+        loader: suspend (apiService: com.iptv.playxy.data.api.IptvApiService, username: String, password: String) -> Unit
+    ): Result<Unit> {
+        return try {
+            val profile = userProfileDao.getProfile() ?: return Result.failure(Exception("No user profile found"))
+            val apiService = apiServiceFactory.createService(profile.url)
+
+            loader(apiService, profile.username, profile.password)
+
+            val currentTime = System.currentTimeMillis()
+            cacheMetadataDao.insertCacheMetadata(CacheMetadata(cacheKey, currentTime))
+            Result.success(Unit)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
     
     // Cache management
     suspend fun isCacheValid(): Boolean {
-        val metadata = cacheMetadataDao.getCacheMetadata("all_content")
+        val metadata = cacheMetadataDao.getCacheMetadata(allCacheKey)
         return if (metadata != null) {
             val currentTime = System.currentTimeMillis()
             (currentTime - metadata.lastUpdated) < cacheExpirationTime
@@ -172,7 +225,22 @@ class IptvRepository @Inject constructor(
     }
     
     suspend fun getLastProviderUpdateTime(): Long {
-        val metadata = cacheMetadataDao.getCacheMetadata("all_content")
+        val metadata = cacheMetadataDao.getCacheMetadata(allCacheKey)
+        return metadata?.lastUpdated ?: 0L
+    }
+
+    suspend fun getLastLiveUpdateTime(): Long {
+        val metadata = cacheMetadataDao.getCacheMetadata(liveCacheKey)
+        return metadata?.lastUpdated ?: 0L
+    }
+
+    suspend fun getLastVodUpdateTime(): Long {
+        val metadata = cacheMetadataDao.getCacheMetadata(vodCacheKey)
+        return metadata?.lastUpdated ?: 0L
+    }
+
+    suspend fun getLastSeriesUpdateTime(): Long {
+        val metadata = cacheMetadataDao.getCacheMetadata(seriesCacheKey)
         return metadata?.lastUpdated ?: 0L
     }
     
