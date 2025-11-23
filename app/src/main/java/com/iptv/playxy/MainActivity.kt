@@ -185,10 +185,7 @@ fun PlayxyNavigation(repository: IptvRepository) {
             movie.value?.let { vodStream ->
                 MovieDetailScreen(
                     movie = vodStream,
-                    onBackClick = { navController.popBackStack() },
-                    onPlayClick = { movie ->
-                        // TODO: Implement player navigation
-                    }
+                    onBackClick = { navController.popBackStack() }
                 )
             }
         }

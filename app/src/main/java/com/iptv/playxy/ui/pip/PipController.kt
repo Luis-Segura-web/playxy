@@ -83,6 +83,11 @@ class PipController(
 
     private fun completePipExit(restored: Boolean) {
         _hidePlayerUi.value = false
+        // Restaurar fullscreen state ANTES de invocar restoreAction
+        if (fullscreenForced) {
+            fullscreenState.value = false
+            fullscreenForced = false
+        }
         if (restored) {
             restoreAction?.invoke()
         } else {
@@ -90,10 +95,6 @@ class PipController(
         }
         restoreAction = null
         closeAction = null
-        if (fullscreenForced) {
-            fullscreenState.value = false
-            fullscreenForced = false
-        }
     }
 
     private fun supportsPip(): Boolean {

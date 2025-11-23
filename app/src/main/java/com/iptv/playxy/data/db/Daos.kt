@@ -228,3 +228,24 @@ interface SeriesProgressDao {
     suspend fun deleteAll()
 }
 
+@Dao
+interface EpisodeProgressDao {
+    @Query("SELECT * FROM episode_progress WHERE episodeId = :episodeId")
+    suspend fun getProgress(episodeId: String): EpisodeProgressEntity?
+
+    @Query("SELECT * FROM episode_progress WHERE seriesId = :seriesId")
+    suspend fun getAllProgressForSeries(seriesId: String): List<EpisodeProgressEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveProgress(progress: EpisodeProgressEntity)
+
+    @Query("DELETE FROM episode_progress WHERE episodeId = :episodeId")
+    suspend fun deleteProgress(episodeId: String)
+
+    @Query("DELETE FROM episode_progress WHERE seriesId = :seriesId")
+    suspend fun deleteProgressForSeries(seriesId: String)
+
+    @Query("DELETE FROM episode_progress")
+    suspend fun deleteAll()
+}
+

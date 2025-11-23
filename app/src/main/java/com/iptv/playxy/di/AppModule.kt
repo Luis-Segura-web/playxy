@@ -86,4 +86,8 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSeriesProgressDao(database: PlayxyDatabase) = database.seriesProgressDao()
+
+    @Provides
+    @Singleton
+    fun provideEpisodeProgressDao(database: PlayxyDatabase) = database.episodeProgressDao()
 }

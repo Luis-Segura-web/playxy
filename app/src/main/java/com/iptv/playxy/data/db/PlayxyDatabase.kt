@@ -19,9 +19,10 @@ import androidx.room.TypeConverters
         FavoriteSeriesEntity::class,
         RecentSeriesEntity::class,
         MovieProgressEntity::class,
-        SeriesProgressEntity::class
+        SeriesProgressEntity::class,
+        EpisodeProgressEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -40,4 +41,5 @@ abstract class PlayxyDatabase : RoomDatabase() {
     abstract fun recentSeriesDao(): RecentSeriesDao
     abstract fun movieProgressDao(): MovieProgressDao
     abstract fun seriesProgressDao(): SeriesProgressDao
+    abstract fun episodeProgressDao(): EpisodeProgressDao
 }

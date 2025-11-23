@@ -1,14 +1,33 @@
 package com.iptv.playxy.ui.login
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -28,98 +47,140 @@ fun LoginScreen(
             onNavigateToLoading()
         }
     }
-    
+    val gradient = Brush.verticalGradient(
+        listOf(
+            MaterialTheme.colorScheme.background,
+            MaterialTheme.colorScheme.surfaceVariant
+        )
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Configurar Perfil") }
-            )
-        }
+        containerColor = Color.Transparent
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(gradient)
                 .padding(paddingValues)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
-            Text(
-                text = "Configuración de IPTV",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(bottom = 32.dp)
-            )
-            
-            OutlinedTextField(
-                value = state.profileName,
-                onValueChange = viewModel::onProfileNameChange,
-                label = { Text("Nombre del Perfil") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = !state.isLoading
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            OutlinedTextField(
-                value = state.username,
-                onValueChange = viewModel::onUsernameChange,
-                label = { Text("Usuario") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = !state.isLoading
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            OutlinedTextField(
-                value = state.password,
-                onValueChange = viewModel::onPasswordChange,
-                label = { Text("Contraseña") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                enabled = !state.isLoading
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            OutlinedTextField(
-                value = state.url,
-                onValueChange = viewModel::onUrlChange,
-                label = { Text("URL del Servidor") },
-                placeholder = { Text("http://example.com") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                enabled = !state.isLoading
-            )
-            
-            if (state.errorMessage != null) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = state.errorMessage!!,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            Button(
-                onClick = viewModel::onSubmit,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.isLoading
+            Column(
+                modifier = Modifier
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (state.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Bienvenido a Playxy",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onBackground
                     )
-                } else {
-                    Text("Guardar y Continuar")
+                    Text(
+                        text = "Configura tu señal IPTV con un par de datos.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = state.profileName,
+                            onValueChange = viewModel::onProfileNameChange,
+                            label = { Text("Nombre del perfil") },
+                            placeholder = { Text("Sala principal") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            enabled = !state.isLoading
+                        )
+
+                        OutlinedTextField(
+                            value = state.username,
+                            onValueChange = viewModel::onUsernameChange,
+                            label = { Text("Usuario") },
+                            placeholder = { Text("usuario IPTV") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            enabled = !state.isLoading
+                        )
+
+                        OutlinedTextField(
+                            value = state.password,
+                            onValueChange = viewModel::onPasswordChange,
+                            label = { Text("Contraseña") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            enabled = !state.isLoading
+                        )
+
+                        OutlinedTextField(
+                            value = state.url,
+                            onValueChange = viewModel::onUrlChange,
+                            label = { Text("URL del servidor") },
+                            placeholder = { Text("http://tuservidor.com") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            enabled = !state.isLoading
+                        )
+
+                        if (state.errorMessage != null) {
+                            Text(
+                                text = state.errorMessage!!,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = viewModel::onSubmit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    enabled = !state.isLoading,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    if (state.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .height(22.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Guardar y continuar")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Tus credenciales se guardan solo en este dispositivo.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

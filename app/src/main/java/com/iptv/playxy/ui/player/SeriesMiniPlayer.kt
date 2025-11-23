@@ -59,7 +59,9 @@ fun SeriesMiniPlayer(
     var showTrackDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(streamUrl) {
-        playerManager.playMedia(streamUrl, PlayerType.SERIES)
+        if (playbackState.streamUrl != streamUrl) {
+            playerManager.playMedia(streamUrl, PlayerType.SERIES)
+        }
     }
 
     val playerContainer = LocalPlayerContainerHost.current
@@ -155,17 +157,9 @@ private fun SeriesMiniPlayerOverlay(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "T$seasonNumber · E$episodeNumber",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.LightGray
-                    )
-                    Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
-                }
                 IconButton(onClick = onClose) {
                     Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
                 }

@@ -52,7 +52,9 @@ fun TVMiniPlayer(
     var showTrackDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(streamUrl) {
-        playerManager.playMedia(streamUrl, PlayerType.TV)
+        if (playbackState.streamUrl != streamUrl) {
+            playerManager.playMedia(streamUrl, PlayerType.TV)
+        }
     }
 
     val playerContainer = LocalPlayerContainerHost.current

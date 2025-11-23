@@ -52,7 +52,9 @@ fun MovieMiniPlayer(
     val playerContainer = LocalPlayerContainerHost.current
 
     LaunchedEffect(streamUrl) {
-        playerManager.playMedia(streamUrl, PlayerType.MOVIE)
+        if (playbackState.streamUrl != streamUrl) {
+            playerManager.playMedia(streamUrl, PlayerType.MOVIE)
+        }
     }
 
     playerContainer(
@@ -128,15 +130,9 @@ private fun MovieMiniPlayerOverlay(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    modifier = Modifier.weight(1f)
-                )
                 IconButton(onClick = onClose) {
                     Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
                 }

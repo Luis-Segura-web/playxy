@@ -150,3 +150,15 @@ data class SeriesProgressEntity(
     val timestamp: Long // Última actualización
 )
 
+// Progreso de episodios individuales
+@Entity(tableName = "episode_progress")
+data class EpisodeProgressEntity(
+    @PrimaryKey val episodeId: String, // ID del episodio
+    val seriesId: String,
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val positionMs: Long, // Posición en milisegundos
+    val durationMs: Long, // Duración total
+    val timestamp: Long // Última actualización
+)
+

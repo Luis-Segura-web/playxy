@@ -2,6 +2,8 @@ package com.iptv.playxy.ui.series
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iptv.playxy.data.db.EpisodeProgressDao
+import com.iptv.playxy.data.db.EpisodeProgressEntity
 import com.iptv.playxy.data.db.SeriesProgressDao
 import com.iptv.playxy.data.db.SeriesProgressEntity
 import com.iptv.playxy.data.repository.IptvRepository
@@ -20,13 +22,16 @@ data class SeriesDetailUiState(
     val seasons: Map<Int, List<Episode>> = emptyMap(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val lastEpisode: Episode? = null // Último episodio visto
+    val lastEpisode: Episode? = null, // Último episodio visto
+    val episodeProgress: Map<String, EpisodeProgressEntity> = emptyMap(), // Progreso de cada episodio
+    val currentPlayingEpisodeId: String? = null // ID del episodio actual en reproducción
 )
 
 @HiltViewModel
 class SeriesDetailViewModel @Inject constructor(
     private val repository: IptvRepository,
-    private val seriesProgressDao: SeriesProgressDao
+    private val seriesProgressDao: SeriesProgressDao,
+    private val episodeProgressDao: EpisodeProgressDao
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SeriesDetailUiState())
@@ -70,10 +75,16 @@ class SeriesDetailViewModel @Inject constructor(
                         seasonMap.values.flatten().find { it.id == progress.lastEpisodeId }
                     } else null
 
+                    // Cargar progreso de todos los episodios
+                    val episodeProgressList = episodeProgressDao.getAllProgressForSeries(seriesId)
+                    val episodeProgressMap = episodeProgressList.associateBy { it.episodeId }
+
                     _uiState.value = _uiState.value.copy(
                         series = seriesInfo.info,
                         seasons = seasonMap,
                         lastEpisode = lastEpisode,
+                        currentPlayingEpisodeId = lastEpisode?.id,
+                        episodeProgress = episodeProgressMap,
                         isLoading = false
                     )
                 } else {
@@ -85,6 +96,7 @@ class SeriesDetailViewModel @Inject constructor(
                         series = series,
                         seasons = emptyMap(),
                         lastEpisode = null,
+                        episodeProgress = emptyMap(),
                         isLoading = false,
                         error = if (series == null) "Serie no encontrada" else "No se pudieron cargar las temporadas"
                     )
@@ -127,6 +139,45 @@ class SeriesDetailViewModel @Inject constructor(
             e.printStackTrace()
             null
         }
+    }
+
+    // Guardar progreso de un episodio específico
+    fun saveEpisodeProgress(
+        episodeId: String,
+        seriesId: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        positionMs: Long,
+        durationMs: Long
+    ) {
+        viewModelScope.launch {
+            try {
+                episodeProgressDao.saveProgress(
+                    EpisodeProgressEntity(
+                        episodeId = episodeId,
+                        seriesId = seriesId,
+                        seasonNumber = seasonNumber,
+                        episodeNumber = episodeNumber,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+                
+                // Actualizar el mapa en el estado
+                val progressList = episodeProgressDao.getAllProgressForSeries(seriesId)
+                _uiState.value = _uiState.value.copy(
+                    episodeProgress = progressList.associateBy { it.episodeId }
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // Establecer el episodio que se está reproduciendo actualmente
+    fun setCurrentPlayingEpisode(episodeId: String?) {
+        _uiState.value = _uiState.value.copy(currentPlayingEpisodeId = episodeId)
     }
 }
 

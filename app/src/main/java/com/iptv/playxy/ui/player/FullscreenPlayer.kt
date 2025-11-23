@@ -68,7 +68,9 @@ fun FullscreenPlayer(
     BackHandler { onBack() }
 
     LaunchedEffect(streamUrl, playerType) {
-        playerManager.playMedia(streamUrl, playerType)
+        if (playbackState.streamUrl != streamUrl) {
+            playerManager.playMedia(streamUrl, playerType)
+        }
     }
 
     ImmersiveMode()

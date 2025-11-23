@@ -171,6 +171,11 @@ class IptvRepository @Inject constructor(
         cacheMetadataDao.deleteAll()
     }
     
+    suspend fun getLastProviderUpdateTime(): Long {
+        val metadata = cacheMetadataDao.getCacheMetadata("all_content")
+        return metadata?.lastUpdated ?: 0L
+    }
+    
     // Content retrieval from cache
     suspend fun getLiveStreams(): List<LiveStream> {
         return liveStreamDao.getAllLiveStreams().map { EntityMapper.liveStreamToDomain(it) }
