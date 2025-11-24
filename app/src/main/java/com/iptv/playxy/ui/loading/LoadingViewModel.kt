@@ -3,6 +3,7 @@ package com.iptv.playxy.ui.loading
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.playxy.data.repository.IptvRepository
+import com.iptv.playxy.data.repository.ContentLoadStage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,42 +57,14 @@ class LoadingViewModel @Inject constructor(
                     return@launch
                 }
                 
-                // Load content from API
-                _state.value = _state.value.copy(
-                    progress = 0.1f,
-                    statusMessage = "Conectando al servidor..."
-                )
-                
-                kotlinx.coroutines.delay(500)
-                
-                _state.value = _state.value.copy(
-                    progress = 0.3f,
-                    statusMessage = "Descargando Canales de TV..."
-                )
-                
-                kotlinx.coroutines.delay(500)
-                
-                _state.value = _state.value.copy(
-                    progress = 0.5f,
-                    statusMessage = "Descargando Películas..."
-                )
-                
-                kotlinx.coroutines.delay(500)
-                
-                _state.value = _state.value.copy(
-                    progress = 0.7f,
-                    statusMessage = "Descargando Series..."
-                )
-                
-                kotlinx.coroutines.delay(500)
-                
-                _state.value = _state.value.copy(
-                    progress = 0.9f,
-                    statusMessage = "Procesando categorías..."
-                )
-                
-                // Actually load the content
-                val result = repository.loadAllContent(profile.username, profile.password)
+                // Actually load the content with feedback
+                val result = repository.loadAllContent(
+                    profile.username,
+                    profile.password
+                ) { stage ->
+                    val (progress, message) = mapStage(stage)
+                    _state.value = _state.value.copy(progress = progress, statusMessage = message)
+                }
                 
                 if (result.isSuccess) {
                     _state.value = _state.value.copy(
@@ -111,6 +84,19 @@ class LoadingViewModel @Inject constructor(
                     errorMessage = "Error inesperado: ${e.message}"
                 )
             }
+        }
+    }
+    
+    private fun mapStage(stage: ContentLoadStage): Pair<Float, String> {
+        return when (stage) {
+            ContentLoadStage.CONNECTING -> 0.05f to "Conectando al servidor..."
+            ContentLoadStage.DOWNLOADING_LIVE -> 0.15f to "Descargando canales y categorías..."
+            ContentLoadStage.PROCESSING_LIVE -> 0.3f to "Procesando canales y categorías..."
+            ContentLoadStage.DOWNLOADING_VOD -> 0.45f to "Descargando películas y categorías..."
+            ContentLoadStage.PROCESSING_VOD -> 0.6f to "Procesando películas y categorías..."
+            ContentLoadStage.DOWNLOADING_SERIES -> 0.75f to "Descargando series y categorías..."
+            ContentLoadStage.PROCESSING_SERIES -> 0.88f to "Procesando series y categorías..."
+            ContentLoadStage.LOADING_CATEGORIES -> 0.95f to "Sincronizando caché..."
         }
     }
     

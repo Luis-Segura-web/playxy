@@ -85,12 +85,14 @@ class TVViewModel @Inject constructor(
             try {
                 val providerCategoriesRaw = repository.getCategories("live")
                 val providerCategories = normalizeCategories(providerCategoriesRaw, "Todos")
+                val blocked = repository.getBlockedCategories("live")
+                val filteredProviders = providerCategories.filterNot { blocked.contains(it.categoryId) }
 
                 val allCategories = buildList {
                     add(Category("all", "Todos", "0"))
                     add(Category("favorites", "Favoritos", "0"))
                     add(Category("recents", "Recientes", "0"))
-                    addAll(providerCategories)
+                    addAll(filteredProviders)
                 }
 
                 _categories.value = allCategories
@@ -128,11 +130,15 @@ class TVViewModel @Inject constructor(
 
     private suspend fun filterChannels(category: Category) {
         try {
+            val blockAdult = repository.isParentalControlEnabled()
+            val blockedCategories = repository.getBlockedCategories("live")
             val channels = when (category.categoryId) {
                 "all" -> repository.getLiveStreams().distinctBy { it.streamId }
                 "favorites" -> loadFavoriteChannels()
                 "recents" -> loadRecentChannels()
                 else -> repository.getLiveStreamsByCategory(category.categoryId)
+            }.filterNot {
+                (blockAdult && it.isAdult) || blockedCategories.contains(it.categoryId)
             }
             channels.forEach { cacheNameData(it) }
             _filteredChannels.value = channels
@@ -174,12 +180,15 @@ class TVViewModel @Inject constructor(
 
     private suspend fun addChannelToRecents(channel: LiveStream) {
         try {
+            val limit = repository.getRecentsLimit()
+            recentChannelDao.deleteRecent(channel.streamId) // evitar duplicados; refresca timestamp
             recentChannelDao.insertRecent(
                 RecentChannelEntity(
                     channelId = channel.streamId,
                     timestamp = System.currentTimeMillis()
                 )
             )
+            recentChannelDao.trim(limit)
         } catch (e: Exception) {
             // Handle error
         }

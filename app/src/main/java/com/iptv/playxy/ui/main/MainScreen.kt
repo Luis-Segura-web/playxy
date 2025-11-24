@@ -5,12 +5,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -29,9 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.playxy.domain.Category
 import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
@@ -626,15 +632,22 @@ fun UnderConstructionContent(section: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsContent(
     onLogout: () -> Unit,
-    onForceReload: () -> Unit
+    onForceReload: () -> Unit,
+    viewModel: com.iptv.playxy.ui.settings.SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+    val limits = listOf(3, 6, 9, 12, 18, 24)
+    val scrollState = rememberScrollState()
+    var limitsExpanded by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(vertical = 12.dp),
+            .padding(vertical = 12.dp)
+            .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
@@ -677,6 +690,191 @@ fun SettingsContent(
                 }
             }
         }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 2.dp,
+            shadowElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Historial de recientes",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = "Límite de elementos recientes",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ExposedDropdownMenuBox(
+                    expanded = limitsExpanded,
+                    onExpandedChange = { limitsExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = "${uiState.recentsLimit}",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Límite de recientes") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = limitsExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = limitsExpanded,
+                        onDismissRequest = { limitsExpanded = false }
+                    ) {
+                        limits.forEach { limit ->
+                            DropdownMenuItem(
+                                text = { Text("$limit") },
+                                onClick = {
+                                    viewModel.onRecentsLimitSelected(limit)
+                                    limitsExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Limpiar recientes",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { viewModel.clearRecentChannels() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Limpiar canales recientes")
+                    }
+                    Button(onClick = { viewModel.clearRecentMovies() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Limpiar películas recientes")
+                    }
+                    Button(onClick = { viewModel.clearRecentSeries() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Limpiar series recientes")
+                    }
+                    Button(onClick = { viewModel.clearAllRecents() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Limpiar todos los recientes")
+                    }
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 2.dp,
+            shadowElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Control parental",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text("Activar control parental")
+                        Text(
+                            text = "Restringe el contenido según PIN.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = uiState.parentalEnabled,
+                        onCheckedChange = { viewModel.toggleParental(it) }
+                    )
+                }
+                OutlinedTextField(
+                    value = uiState.parentalPin,
+                    onValueChange = { viewModel.updatePin(it.take(6)) },
+                    label = { Text("PIN (hasta 6 dígitos)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    trailingIcon = {
+                        Button(
+                            onClick = { viewModel.savePin() },
+                            enabled = uiState.parentalPin.isNotBlank()
+                        ) {
+                            Text("Guardar PIN")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (uiState.isSaving) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+
+        @Composable
+        fun CategoryChips(
+            title: String,
+            categories: List<Category>,
+            blocked: Set<String>,
+            type: String
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 2.dp,
+                shadowElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(text = title, style = MaterialTheme.typography.titleMedium)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        categories.forEach { category ->
+                            val selected = blocked.contains(category.categoryId)
+                            FilterChip(
+                                selected = selected,
+                                onClick = { viewModel.toggleBlockedCategory(type, category.categoryId) },
+                                label = { Text(category.categoryName) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        CategoryChips(
+            title = "Ocultar categorías de canales",
+            categories = uiState.liveCategories,
+            blocked = uiState.blockedLive,
+            type = "live"
+        )
+        CategoryChips(
+            title = "Ocultar categorías de películas",
+            categories = uiState.vodCategories,
+            blocked = uiState.blockedVod,
+            type = "vod"
+        )
+        CategoryChips(
+            title = "Ocultar categorías de series",
+            categories = uiState.seriesCategories,
+            blocked = uiState.blockedSeries,
+            type = "series"
+        )
 
         Spacer(modifier = Modifier.weight(1f))
 

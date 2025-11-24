@@ -24,7 +24,8 @@ fun CategoryBar(
     categories: List<Category>,
     selectedCategoryId: String?,
     onCategorySelected: (Category) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    highlightedCategoryIds: Set<String> = emptySet()
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -39,8 +40,9 @@ fun CategoryBar(
         ) {
             items(categories, key = { it.categoryId }) { category ->
                 val isSelected = category.categoryId == selectedCategoryId
+                val isHighlighted = highlightedCategoryIds.contains(category.categoryId)
                 FilterChip(
-                    selected = isSelected,
+                    selected = isSelected || isHighlighted,
                     onClick = { onCategorySelected(category) },
                     label = { Text(category.categoryName) },
                     leadingIcon = {

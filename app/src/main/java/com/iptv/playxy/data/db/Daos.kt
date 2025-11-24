@@ -88,6 +88,9 @@ interface CategoryDao {
     
     @Query("SELECT * FROM categories WHERE type = :type ORDER BY orderIndex ASC")
     suspend fun getCategoriesByType(type: String): List<CategoryEntity>
+
+    @Query("DELETE FROM categories WHERE type = :type")
+    suspend fun deleteByType(type: String)
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(categories: List<CategoryEntity>)
@@ -139,6 +142,16 @@ interface RecentChannelDao {
     
     @Query("DELETE FROM recent_channels WHERE channelId = :channelId")
     suspend fun deleteRecent(channelId: String)
+
+    @Query(
+        """
+        DELETE FROM recent_channels 
+        WHERE channelId NOT IN (
+            SELECT channelId FROM recent_channels ORDER BY timestamp DESC LIMIT :limit
+        )
+        """
+    )
+    suspend fun trim(limit: Int)
     
     @Query("DELETE FROM recent_channels")
     suspend fun deleteAll()
@@ -169,6 +182,19 @@ interface RecentVodDao {
 
     @Query("DELETE FROM recent_vod WHERE streamId = :streamId")
     suspend fun deleteByStream(streamId: String)
+
+    @Query("DELETE FROM recent_vod")
+    suspend fun deleteAll()
+
+    @Query(
+        """
+        DELETE FROM recent_vod 
+        WHERE streamId NOT IN (
+            SELECT streamId FROM recent_vod ORDER BY timestamp DESC LIMIT :limit
+        )
+        """
+    )
+    suspend fun trim(limit: Int)
 }
 
 @Dao
@@ -196,6 +222,19 @@ interface RecentSeriesDao {
 
     @Query("DELETE FROM recent_series WHERE seriesId = :seriesId")
     suspend fun deleteBySeries(seriesId: String)
+
+    @Query("DELETE FROM recent_series")
+    suspend fun deleteAll()
+
+    @Query(
+        """
+        DELETE FROM recent_series 
+        WHERE seriesId NOT IN (
+            SELECT seriesId FROM recent_series ORDER BY timestamp DESC LIMIT :limit
+        )
+        """
+    )
+    suspend fun trim(limit: Int)
 }
 
 @Dao
@@ -248,4 +287,3 @@ interface EpisodeProgressDao {
     @Query("DELETE FROM episode_progress")
     suspend fun deleteAll()
 }
-

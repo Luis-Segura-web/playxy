@@ -77,7 +77,9 @@ class SeriesViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val providerCategoriesRaw = repository.getCategories("series")
+                val blocked = repository.getBlockedCategories("series")
                 val providerCategories = normalizeCategories(providerCategoriesRaw, "Todas")
+                    .filterNot { blocked.contains(it.categoryId) }
                 val allCategories = buildList {
                     add(Category("all", "Todas", "0"))
                     add(Category("favorites", "Favoritos", "0"))
@@ -158,9 +160,12 @@ class SeriesViewModel @Inject constructor(
 
     fun onSeriesOpened(seriesId: String) {
         viewModelScope.launch {
+            recentSeriesDao.deleteBySeries(seriesId)
             recentSeriesDao.insertRecent(
                 RecentSeriesEntity(seriesId = seriesId, timestamp = System.currentTimeMillis())
             )
+            val limit = repository.getRecentsLimit()
+            recentSeriesDao.trim(limit)
             loadRecentIds()
             if (_uiState.value.selectedCategory?.categoryId == "recents") loadRecentSeries()
         }
@@ -170,7 +175,9 @@ class SeriesViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
+                val blockedCategories = repository.getBlockedCategories("series")
                 val series = repository.getSeriesByCategory(categoryId)
+                    .filterNot { blockedCategories.contains(it.categoryId) }
                 _uiState.value = _uiState.value.copy(
                     series = series,
                     isLoading = false
@@ -187,7 +194,10 @@ class SeriesViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
+                val blockAdult = repository.isParentalControlEnabled()
+                val blockedCategories = repository.getBlockedCategories("series")
                 val series = repository.getSeries().distinctBy { it.seriesId }
+                    .filterNot { blockedCategories.contains(it.categoryId) }
                 _uiState.value = _uiState.value.copy(
                     series = series,
                     isLoading = false
@@ -238,6 +248,7 @@ class SeriesViewModel @Inject constructor(
 
 private val accentRegex = Regex("\\p{M}")
 private val numberRegex = Regex("\\d+")
+private const val RECENTS_LIMIT = 12
 
 private data class NameCache(
     val normalizedName: String,

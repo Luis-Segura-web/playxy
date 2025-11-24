@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class MoviesUiState(
@@ -49,7 +51,7 @@ class MoviesViewModel @Inject constructor(
     // In-memory favorites & recents (since DB layer not defined for VOD yet)
     private val favoriteIds = mutableSetOf<String>()
     private val recentIds = ArrayDeque<String>()
-    private val maxRecents = 30
+    private val maxRecents = RECENTS_LIMIT
     private val nameCache = mutableMapOf<String, NameCache>()
 
     private suspend fun loadFavoriteIds() {
@@ -100,7 +102,9 @@ class MoviesViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val providerCategoriesRaw = repository.getCategories("vod")
+                val blocked = repository.getBlockedCategories("vod")
                 val providerCategories = normalizeCategories(providerCategoriesRaw, "Todas")
+                    .filterNot { blocked.contains(it.categoryId) }
                 val allCategories = buildList {
                     add(Category("all", "Todas", "0"))
                     add(Category("favorites", "Favoritos", "0"))
@@ -135,8 +139,15 @@ class MoviesViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
-                val all = repository.getVodStreams()
-                val favs = all.filter { favoriteIds.contains(it.streamId) }
+                val blockAdult = repository.isParentalControlEnabled()
+                val blockedCategories = repository.getBlockedCategories("vod")
+                val favs = withContext(Dispatchers.Default) {
+                    repository.getVodStreams()
+                        .asSequence()
+                        .filterNot { (blockAdult && it.isAdult) || blockedCategories.contains(it.categoryId) }
+                        .filter { favoriteIds.contains(it.streamId) }
+                        .toList()
+                }
                 _uiState.value = _uiState.value.copy(movies = favs, isLoading = false)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -149,8 +160,14 @@ class MoviesViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
-                val all = repository.getVodStreams()
-                val recents = recentIds.mapNotNull { id -> all.find { it.streamId == id } }
+                val blockAdult = repository.isParentalControlEnabled()
+                val blockedCategories = repository.getBlockedCategories("vod")
+                val recents = withContext(Dispatchers.Default) {
+                    val filtered = repository.getVodStreams()
+                        .filterNot { (blockAdult && it.isAdult) || blockedCategories.contains(it.categoryId) }
+                        .associateBy { it.streamId }
+                    recentIds.mapNotNull { id -> filtered[id] }
+                }
                 _uiState.value = _uiState.value.copy(movies = recents, isLoading = false)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -161,9 +178,12 @@ class MoviesViewModel @Inject constructor(
 
     private fun registerRecent(streamId: String) {
         viewModelScope.launch {
+            recentVodDao.deleteByStream(streamId)
             recentVodDao.insertRecent(
                 RecentVodEntity(streamId = streamId, timestamp = System.currentTimeMillis())
             )
+            val limit = repository.getRecentsLimit()
+            recentVodDao.trim(limit)
             loadRecentIds()
             if (_uiState.value.selectedCategory?.categoryId == "recents") {
                 loadRecentMovies()
@@ -194,8 +214,13 @@ class MoviesViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
-                val movies = repository.getVodStreamsByCategory(categoryId)
-                movies.forEach { cacheNameData(it) }
+                val blockAdult = repository.isParentalControlEnabled()
+                val blockedCategories = repository.getBlockedCategories("vod")
+                val movies = withContext(Dispatchers.Default) {
+                    repository.getVodStreamsByCategory(categoryId)
+                        .filterNot { (blockAdult && it.isAdult) || blockedCategories.contains(it.categoryId) }
+                        .also { list -> list.forEach { cacheNameData(it) } }
+                }
                 _uiState.value = _uiState.value.copy(movies = movies, isLoading = false)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -208,8 +233,14 @@ class MoviesViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
-                val movies = repository.getVodStreams().distinctBy { it.streamId }
-                movies.forEach { cacheNameData(it) }
+                val blockAdult = repository.isParentalControlEnabled()
+                val blockedCategories = repository.getBlockedCategories("vod")
+                val movies = withContext(Dispatchers.Default) {
+                    repository.getVodStreams()
+                        .distinctBy { it.streamId }
+                        .filterNot { (blockAdult && it.isAdult) || blockedCategories.contains(it.categoryId) }
+                        .also { list -> list.forEach { cacheNameData(it) } }
+                }
                 _uiState.value = _uiState.value.copy(movies = movies, isLoading = false)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -309,7 +340,7 @@ class MoviesViewModel @Inject constructor(
         return normalized.replace(accentRegex, "")
     }
 
-    private fun naturalSortKey(input: String): String {
+private fun naturalSortKey(input: String): String {
         val builder = StringBuilder()
         var lastIndex = 0
         numberRegex.findAll(input).forEach { match ->
@@ -326,6 +357,7 @@ class MoviesViewModel @Inject constructor(
 
 private val accentRegex = Regex("\\p{M}")
 private val numberRegex = Regex("\\d+")
+private const val RECENTS_LIMIT = 12
 
 private data class NameCache(
     val normalizedName: String,

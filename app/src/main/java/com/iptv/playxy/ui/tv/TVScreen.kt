@@ -35,6 +35,12 @@ fun TVScreen(
     val userProfile by viewModel.userProfile.collectAsState()
     val playerManager = LocalPlayerManager.current
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
+    val highlightedCategories = remember(currentChannel, selectedCategory) {
+        buildSet {
+            currentChannel?.categoryId?.let { add(it) }
+            selectedCategory?.categoryId?.let { add(it) }
+        }
+    }
     var isChannelSwitching by remember { mutableStateOf(false) }
     val fullscreenState = LocalFullscreenState.current
     val isFullscreen = fullscreenState.value
@@ -127,6 +133,7 @@ fun TVScreen(
             CategoryBar(
                 categories = categories,
                 selectedCategoryId = selectedCategory?.categoryId,
+                highlightedCategoryIds = highlightedCategories,
                 onCategorySelected = { category ->
                     viewModel.selectCategory(category)
                 },
