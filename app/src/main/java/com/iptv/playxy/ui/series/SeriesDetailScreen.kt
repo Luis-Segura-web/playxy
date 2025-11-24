@@ -64,6 +64,7 @@ import com.iptv.playxy.ui.player.PlayerType
 import com.iptv.playxy.ui.player.SeriesMiniPlayer
 import com.iptv.playxy.util.StreamUrlBuilder
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,13 +142,20 @@ fun SeriesDetailScreen(
     }
 
     LaunchedEffect(playbackState.streamUrl) {
-        if (playbackState.streamUrl == null && isPlaying && !isEpisodeSwitching) {
+        if (!playerManager.hasActivePlayback() && isPlaying && !isEpisodeSwitching && !isInPip) {
             isPlaying = false
             currentEpisode = null
             fullscreenState.value = false
         }
         if (playbackState.streamUrl != null) {
             isEpisodeSwitching = false
+        }
+    }
+
+    // Ensure playback keeps running when exiting fullscreen back to mini player
+    LaunchedEffect(isFullscreen, isPlaying) {
+        if (!isFullscreen && isPlaying) {
+            playerManager.play()
         }
     }
 
@@ -210,8 +218,11 @@ fun SeriesDetailScreen(
     // Restaurar posición cuando hay lastPositionMs y el reproductor está listo
     LaunchedEffect(lastPositionMs, isPlaying, playbackState.firstFrameRendered, currentEpisode?.id) {
         if (lastPositionMs > 0L && isPlaying && playbackState.firstFrameRendered) {
-            kotlinx.coroutines.delay(500) // Esperar un poco para que el player esté completamente listo
-            playerManager.seekTo(lastPositionMs)
+            val currentPos = playerManager.getCurrentPosition()
+            if (abs(currentPos - lastPositionMs) > 750L) {
+                kotlinx.coroutines.delay(500) // Esperar un poco para que el player esté completamente listo
+                playerManager.seekTo(lastPositionMs)
+            }
             lastPositionMs = 0L // Reset para evitar múltiples seeks
         }
     }
@@ -266,8 +277,6 @@ fun SeriesDetailScreen(
             playerType = PlayerType.SERIES,
             playerManager = playerManager,
             onBack = {
-                // guardar posición y salir
-                lastPositionMs = playerManager.getCurrentPosition()
                 fullscreenState.value = false
             },
             onPreviousItem = {

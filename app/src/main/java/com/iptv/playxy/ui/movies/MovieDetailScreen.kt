@@ -73,6 +73,7 @@ import com.iptv.playxy.ui.player.PlayerSurface
 import com.iptv.playxy.ui.player.PlayerType
 import com.iptv.playxy.util.StreamUrlBuilder
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,7 +114,7 @@ fun MovieDetailScreen(
     }
 
     LaunchedEffect(playbackState.streamUrl) {
-        if (playbackState.streamUrl == null && isPlaying) {
+        if (!playerManager.hasActivePlayback() && isPlaying && !isInPip) {
             // Guardar progreso cuando se detiene la reproducción
             val currentPos = playerManager.getCurrentPosition()
             val duration = playerManager.getDuration()
@@ -122,6 +123,13 @@ fun MovieDetailScreen(
             }
             isPlaying = false
             fullscreenState.value = false
+        }
+    }
+
+    // Ensure playback continues when returning from fullscreen to mini player
+    LaunchedEffect(isFullscreen, isPlaying) {
+        if (!isFullscreen && isPlaying) {
+            playerManager.play()
         }
     }
 
@@ -153,8 +161,11 @@ fun MovieDetailScreen(
     // Restaurar posición cuando hay lastPositionMs y el reproductor está listo
     LaunchedEffect(lastPositionMs, isPlaying, playbackState.firstFrameRendered) {
         if (lastPositionMs > 0L && isPlaying && playbackState.firstFrameRendered) {
-            kotlinx.coroutines.delay(500) // Esperar un poco para que el player esté completamente listo
-            playerManager.seekTo(lastPositionMs)
+            val currentPos = playerManager.getCurrentPosition()
+            if (abs(currentPos - lastPositionMs) > 750L) {
+                kotlinx.coroutines.delay(500) // Esperar un poco para que el player esté completamente listo
+                playerManager.seekTo(lastPositionMs)
+            }
             lastPositionMs = 0L // Reset para evitar múltiples seeks
         }
     }
@@ -195,10 +206,7 @@ fun MovieDetailScreen(
             title = movie.name,
             playerType = PlayerType.MOVIE,
             playerManager = playerManager,
-            onBack = {
-                lastPositionMs = playerManager.getCurrentPosition()
-                fullscreenState.value = false
-            }
+            onBack = { fullscreenState.value = false }
         )
     } else {
         var synopsisExpanded by remember { mutableStateOf(false) }
