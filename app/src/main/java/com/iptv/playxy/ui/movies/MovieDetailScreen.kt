@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
@@ -31,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -54,6 +57,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
@@ -94,10 +99,31 @@ fun MovieDetailScreen(
     var showResumeDialog by remember { mutableStateOf(false) }
     var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
     var currentPlaybackDuration by remember { mutableLongStateOf(0L) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    var accessGranted by remember { mutableStateOf(false) }
+    var gatePin by remember { mutableStateOf("") }
+    var recentRegistered by remember { mutableStateOf(false) }
 
     // Load movie details when screen opens
     LaunchedEffect(movie.streamId) {
-        viewModel.loadMovieInfo(movie.streamId)
+        gatePin = ""
+        pinError = null
+        accessGranted = false
+        recentRegistered = false
+        val restricted = viewModel.requiresPinForCategory(movie.categoryId)
+        if (restricted) {
+            showPinDialog = true
+        } else {
+            showPinDialog = false
+            accessGranted = true
+        }
+    }
+
+    LaunchedEffect(movie.streamId, accessGranted) {
+        if (accessGranted) {
+            viewModel.loadMovieInfo(movie.streamId)
+        }
     }
 
     // Shared PlayerManager instance - survives composition changes
@@ -123,6 +149,13 @@ fun MovieDetailScreen(
             }
             isPlaying = false
             fullscreenState.value = false
+        }
+    }
+
+    LaunchedEffect(playbackState.streamUrl) {
+        if (playbackState.streamUrl != null && !recentRegistered && accessGranted) {
+            viewModel.onMoviePlayed(movie)
+            recentRegistered = true
         }
     }
 
@@ -200,7 +233,64 @@ fun MovieDetailScreen(
         } else null
     }
 
-    if (isFullscreen && userProfile != null && currentStreamUrl != null) {
+    if (showPinDialog) {
+        AlertDialog(
+            onDismissRequest = { onBackClick() },
+            title = { Text("PIN requerido") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Ingresa el PIN para acceder a este contenido.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedTextField(
+                        value = gatePin,
+                        onValueChange = { gatePin = sanitizePinInput(it) },
+                        label = { Text("PIN") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    if (pinError != null) {
+                        Text(
+                            text = pinError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val sanitized = sanitizePinInput(gatePin)
+                    gatePin = sanitized
+                    if (sanitized.length != 4) {
+                        pinError = "Debes ingresar un PIN de 4 dígitos."
+                        return@Button
+                    }
+                    snackbarScope.launch {
+                        val valid = viewModel.validateParentalPin(sanitized)
+                        if (valid) {
+                            accessGranted = true
+                            showPinDialog = false
+                            pinError = null
+                        } else {
+                            pinError = "PIN incorrecto."
+                        }
+                    }
+                }) {
+                    Text("Confirmar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onBackClick() }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (!accessGranted) {
+        Box(modifier = Modifier.fillMaxSize())
+    } else if (isFullscreen && userProfile != null && currentStreamUrl != null) {
         FullscreenPlayer(
             streamUrl = currentStreamUrl,
             title = movie.name,
@@ -550,3 +640,5 @@ fun InfoRow(
         )
     }
 }
+
+private fun sanitizePinInput(input: String): String = input.filter { it.isDigit() }.take(4)

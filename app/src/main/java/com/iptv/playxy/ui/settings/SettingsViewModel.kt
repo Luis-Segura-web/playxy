@@ -3,15 +3,19 @@ package com.iptv.playxy.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.playxy.data.repository.IptvRepository
+import com.iptv.playxy.data.repository.PreferencesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 
 data class SettingsUiState(
-    val recentsLimit: Int = 12,
+    val recentsLimit: Int = PreferencesManager.DEFAULT_RECENTS_LIMIT,
+    val recentsLimitInput: String = PreferencesManager.DEFAULT_RECENTS_LIMIT.toString(),
     val parentalEnabled: Boolean = false,
     val parentalPin: String = "",
     val isSaving: Boolean = false,
@@ -30,6 +34,8 @@ class SettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private val _events = MutableSharedFlow<SettingsEvent>()
+    val events: SharedFlow<SettingsEvent> = _events
 
     init {
         viewModelScope.launch {
@@ -44,6 +50,7 @@ class SettingsViewModel @Inject constructor(
             val blockedSeries = repository.getBlockedCategories("series")
             _uiState.value = _uiState.value.copy(
                 recentsLimit = limit,
+                recentsLimitInput = limit.toString(),
                 parentalEnabled = parentalEnabled,
                 parentalPin = pin,
                 liveCategories = liveCats,
@@ -56,19 +63,30 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun onRecentsLimitSelected(limit: Int) {
+    fun onRecentsLimitInputChange(input: String) {
+        // Solo dígitos, limitar a 3 caracteres para evitar valores absurdos
+        val sanitized = input.filter { it.isDigit() }.take(3)
+        _uiState.value = _uiState.value.copy(recentsLimitInput = sanitized)
+    }
+
+    fun saveRecentsLimit() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isSaving = true, recentsLimit = limit)
+            _uiState.value = _uiState.value.copy(isSaving = true)
+            val parsed = _uiState.value.recentsLimitInput.filter { it.isDigit() }.toIntOrNull()
+            val limit = parsed?.takeIf { it > 0 } ?: PreferencesManager.DEFAULT_RECENTS_LIMIT
             repository.updateRecentsLimit(limit)
-            _uiState.value = _uiState.value.copy(isSaving = false)
+            _uiState.value = _uiState.value.copy(
+                isSaving = false,
+                recentsLimit = limit,
+                recentsLimitInput = limit.toString()
+            )
+            _events.emit(SettingsEvent.ShowMessage("Límite de recientes actualizado a $limit"))
         }
     }
 
     fun toggleParental(enabled: Boolean) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(parentalEnabled = enabled, isSaving = true)
-            repository.updateParentalControl(enabled, _uiState.value.parentalPin.ifBlank { null })
-            _uiState.value = _uiState.value.copy(isSaving = false)
+            setParentalEnabled(enabled)
         }
     }
 
@@ -85,19 +103,31 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun clearRecentChannels() {
-        viewModelScope.launch { repository.clearRecentChannels() }
+        viewModelScope.launch {
+            repository.clearRecentChannels()
+            _events.emit(SettingsEvent.ShowMessage("Canales recientes limpiados"))
+        }
     }
 
     fun clearRecentMovies() {
-        viewModelScope.launch { repository.clearRecentVod() }
+        viewModelScope.launch {
+            repository.clearRecentVod()
+            _events.emit(SettingsEvent.ShowMessage("Películas recientes limpiadas"))
+        }
     }
 
     fun clearRecentSeries() {
-        viewModelScope.launch { repository.clearRecentSeries() }
+        viewModelScope.launch {
+            repository.clearRecentSeries()
+            _events.emit(SettingsEvent.ShowMessage("Series recientes limpiadas"))
+        }
     }
 
     fun clearAllRecents() {
-        viewModelScope.launch { repository.clearAllRecents() }
+        viewModelScope.launch {
+            repository.clearAllRecents()
+            _events.emit(SettingsEvent.ShowMessage("Todos los recientes han sido limpiados"))
+        }
     }
 
     fun toggleBlockedCategory(type: String, categoryId: String) {
@@ -117,4 +147,56 @@ class SettingsViewModel @Inject constructor(
             repository.updateBlockedCategories(type, updated)
         }
     }
+
+    suspend fun hasPinConfigured(): Boolean {
+        return repository.hasParentalPin()
+    }
+
+    suspend fun isPinValid(pin: String): Boolean {
+        return repository.verifyParentalPin(pin)
+    }
+
+    suspend fun configurePin(pin: String, enableAfterSave: Boolean) {
+        _uiState.value = _uiState.value.copy(isSaving = true)
+        repository.updateParentalControl(enableAfterSave, pin)
+        _uiState.value = _uiState.value.copy(
+            parentalPin = pin,
+            parentalEnabled = enableAfterSave,
+            isSaving = false
+        )
+    }
+
+    suspend fun changePin(currentPin: String, newPin: String): Boolean {
+        val isValid = repository.verifyParentalPin(currentPin)
+        if (isValid) {
+            repository.updateParentalControl(_uiState.value.parentalEnabled, newPin)
+            _uiState.value = _uiState.value.copy(parentalPin = newPin)
+        }
+        return isValid
+    }
+
+    suspend fun setParentalEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(parentalEnabled = enabled, isSaving = true)
+        repository.updateParentalControl(enabled, _uiState.value.parentalPin.ifBlank { null })
+        _uiState.value = _uiState.value.copy(isSaving = false)
+    }
+
+    suspend fun saveBlockedCategories(
+        live: Set<String>,
+        vod: Set<String>,
+        series: Set<String>
+    ) {
+        repository.updateBlockedCategories("live", live)
+        repository.updateBlockedCategories("vod", vod)
+        repository.updateBlockedCategories("series", series)
+        _uiState.value = _uiState.value.copy(
+            blockedLive = live,
+            blockedVod = vod,
+            blockedSeries = series
+        )
+    }
+}
+
+sealed class SettingsEvent {
+    data class ShowMessage(val message: String) : SettingsEvent()
 }

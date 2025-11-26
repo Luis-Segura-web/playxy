@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -21,15 +20,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,9 +33,8 @@ import coil.compose.AsyncImage
 import com.iptv.playxy.domain.Series
 import com.iptv.playxy.ui.components.CategoryBar
 import com.iptv.playxy.ui.main.SortOrder
-import java.text.Normalizer
-
-private val accentRegex = Regex("\\p{M}")
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.LoadState
 
 @Composable
 fun SeriesScreen(
@@ -47,8 +42,13 @@ fun SeriesScreen(
     searchQuery: String = "",
     sortOrder: SortOrder = SortOrder.DEFAULT,
     onSeriesClick: (Series) -> Unit
-) {
+)
+{
+    LaunchedEffect(searchQuery, sortOrder) { viewModel.updateFilters(searchQuery, sortOrder) }
     val uiState by viewModel.uiState.collectAsState()
+    val pagingFlow by viewModel.pagingFlow.collectAsState()
+    val seriesPaging = pagingFlow.collectAsLazyPagingItems()
+    val isSpecialCategory = uiState.selectedCategory.categoryId in setOf("favorites", "recents")
 
     Column(modifier = Modifier.fillMaxSize()) {
         CategoryBar(
@@ -58,44 +58,17 @@ fun SeriesScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Apply search and sort to series
-        val processedSeries by remember(uiState.series, searchQuery, sortOrder) {
-            derivedStateOf {
-                var series = uiState.series
-                
-                // Apply search filter (accent-insensitive)
-                if (searchQuery.isNotEmpty()) {
-                    val normalizedQuery = searchQuery.normalizeString()
-                    series = series.filter {
-                        viewModel.getNormalizedName(it).contains(normalizedQuery, ignoreCase = true)
-                    }
-                }
-                
-                // Apply sorting
-                when (sortOrder) {
-                    SortOrder.A_TO_Z -> series.sortedBy { viewModel.getNaturalSortKey(it) }
-                    SortOrder.Z_TO_A -> series.sortedByDescending { viewModel.getNaturalSortKey(it) }
-                    SortOrder.DATE_NEWEST -> series.sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }
-                    SortOrder.DATE_OLDEST -> series.sortedBy { it.lastModified?.toLongOrNull() ?: Long.MAX_VALUE }
-                    SortOrder.DEFAULT -> series
-                }
-            }
-        }
-
-        // Series Grid
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+        val showLoading = seriesPaging.loadState.refresh is LoadState.Loading && seriesPaging.itemCount == 0 && !isSpecialCategory
+        if (showLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         } else {
             SeriesGrid(
-                series = processedSeries,
-                onSeriesClick = { s ->
-                    viewModel.onSeriesOpened(s.seriesId)
-                    onSeriesClick(s)
+                series = seriesPaging,
+                onSeriesClick = { series ->
+                    viewModel.onSeriesOpened(series.seriesId)
+                    onSeriesClick(series)
                 },
                 modifier = Modifier.fillMaxSize(),
                 viewModel = viewModel
@@ -106,12 +79,12 @@ fun SeriesScreen(
 
 @Composable
 fun SeriesGrid(
-    series: List<Series>,
+    series: androidx.paging.compose.LazyPagingItems<Series>,
     onSeriesClick: (Series) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SeriesViewModel = hiltViewModel()
 ) {
-    if (series.isEmpty()) {
+    if (series.itemCount == 0 && series.loadState.refresh !is LoadState.Loading) {
         Box(
             modifier = modifier,
             contentAlignment = Alignment.Center
@@ -130,7 +103,8 @@ fun SeriesGrid(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(series) { seriesItem ->
+            items(series.itemCount) { index ->
+                val seriesItem = series[index] ?: return@items
                 SeriesPosterItem(
                     series = seriesItem,
                     isFavorite = viewModel.uiState.collectAsState().value.favoriteIds.contains(seriesItem.seriesId),
@@ -155,13 +129,11 @@ fun SeriesPosterItem(
             .fillMaxWidth()
             .clickable(onClick = onClick)
     ) {
-        // Poster Image con aspect ratio 2:3 y overlays
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
         ) {
-            // Poster Card
             Card(
                 modifier = Modifier.fillMaxSize(),
                 shape = RoundedCornerShape(8.dp),
@@ -181,7 +153,6 @@ fun SeriesPosterItem(
                 )
             }
 
-            // Overlay superior con degradado vertical
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -197,7 +168,6 @@ fun SeriesPosterItem(
                     )
             )
 
-            // Rating y Favorito en la misma fila (sin separación)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -206,7 +176,6 @@ fun SeriesPosterItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Rating (esquina superior izquierda)
                 if (series.rating5Based > 0) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -227,27 +196,20 @@ fun SeriesPosterItem(
                         Text(
                             text = java.util.Locale.getDefault().let { l -> String.format(l, "%.1f", series.rating5Based) },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 } else {
                     Spacer(modifier = Modifier.width(1.dp))
                 }
 
-                // Favorito (esquina superior derecha, sin espacio adicional)
                 IconButton(
-                    onClick = onToggleFavorite,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .offset(x = 4.dp, y = (-4).dp)
-                        .semantics { contentDescription = "Favorito" }
+                    onClick = onToggleFavorite
                 ) {
                     Icon(
-                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = null,
-                        tint = if (isFavorite) Color(0xFFFF0000) else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (isFavorite) Color(0xFFFF0000) else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -255,7 +217,6 @@ fun SeriesPosterItem(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Series Title (max 3 lines)
         Text(
             text = series.name,
             style = MaterialTheme.typography.bodySmall,
@@ -266,10 +227,4 @@ fun SeriesPosterItem(
             modifier = Modifier.fillMaxWidth()
         )
     }
-}
-
-// Helper function to remove accents from strings for search
-private fun String.normalizeString(): String {
-    val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
-    return normalized.replace(accentRegex, "")
 }

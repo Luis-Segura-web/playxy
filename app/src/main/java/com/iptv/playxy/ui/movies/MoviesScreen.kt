@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -21,9 +20,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,9 +35,8 @@ import coil.compose.AsyncImage
 import com.iptv.playxy.domain.VodStream
 import com.iptv.playxy.ui.components.CategoryBar
 import com.iptv.playxy.ui.main.SortOrder
-import java.text.Normalizer
-
-private val accentRegex = Regex("\\p{M}")
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.LoadState
 
 @Composable
 fun MoviesScreen(
@@ -48,7 +45,11 @@ fun MoviesScreen(
     sortOrder: SortOrder = SortOrder.DEFAULT,
     onMovieClick: (VodStream) -> Unit
 ) {
+    LaunchedEffect(searchQuery, sortOrder) { viewModel.updateFilters(searchQuery, sortOrder) }
     val uiState by viewModel.uiState.collectAsState()
+    val pagingFlow by viewModel.pagingFlow.collectAsState()
+    val moviesPagingItems = pagingFlow.collectAsLazyPagingItems()
+    val isSpecialCategory = uiState.selectedCategory.categoryId in setOf("favorites", "recents")
 
     Column(modifier = Modifier.fillMaxSize()) {
         CategoryBar(
@@ -58,32 +59,9 @@ fun MoviesScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Apply search and sort to movies
-        val processedMovies by remember(uiState.movies, searchQuery, sortOrder) {
-            derivedStateOf {
-                var movies = uiState.movies
-                
-                // Apply search filter (accent-insensitive)
-                if (searchQuery.isNotEmpty()) {
-                    val normalizedQuery = searchQuery.normalizeString()
-                    movies = movies.filter {
-                        viewModel.getNormalizedName(it).contains(normalizedQuery, ignoreCase = true)
-                    }
-                }
-                
-                // Apply sorting
-                when (sortOrder) {
-                    SortOrder.A_TO_Z -> movies.sortedBy { viewModel.getNaturalSortKey(it) }
-                    SortOrder.Z_TO_A -> movies.sortedByDescending { viewModel.getNaturalSortKey(it) }
-                    SortOrder.DATE_NEWEST -> movies.sortedByDescending { it.added?.toLongOrNull() ?: 0L }
-                    SortOrder.DATE_OLDEST -> movies.sortedBy { it.added?.toLongOrNull() ?: Long.MAX_VALUE }
-                    SortOrder.DEFAULT -> movies
-                }
-            }
-        }
-
         // Movies Grid
-        if (uiState.isLoading) {
+        val showLoading = moviesPagingItems.loadState.refresh is LoadState.Loading && moviesPagingItems.itemCount == 0 && !isSpecialCategory
+        if (showLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -92,7 +70,7 @@ fun MoviesScreen(
             }
         } else {
             MoviesGrid(
-                movies = processedMovies,
+                movies = moviesPagingItems,
                 onMovieClick = onMovieClick,
                 modifier = Modifier.fillMaxSize()
             )
@@ -102,12 +80,12 @@ fun MoviesScreen(
 
 @Composable
 fun MoviesGrid(
-    movies: List<VodStream>,
+    movies: androidx.paging.compose.LazyPagingItems<VodStream>,
     onMovieClick: (VodStream) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MoviesViewModel = hiltViewModel()
 ) {
-    if (movies.isEmpty()) {
+    if (movies.itemCount == 0 && movies.loadState.refresh !is LoadState.Loading) {
         Box(
             modifier = modifier,
             contentAlignment = Alignment.Center
@@ -126,10 +104,12 @@ fun MoviesGrid(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(movies) { movie ->
+            items(movies.itemCount) { index ->
+                val movie = movies[index] ?: return@items
+                val isFavorite = viewModel.uiState.collectAsState().value.favoriteIds.contains(movie.streamId)
                 MoviePosterItem(
                     movie = movie,
-                    isFavorite = viewModel.uiState.collectAsState().value.favoriteIds.contains(movie.streamId),
+                    isFavorite = isFavorite,
                     onToggleFavorite = { viewModel.toggleFavorite(movie.streamId) },
                     onClick = { onMovieClick(movie) }
                 )
@@ -262,10 +242,4 @@ fun MoviePosterItem(
             modifier = Modifier.fillMaxWidth()
         )
     }
-}
-
-// Helper function to remove accents from strings for search
-private fun String.normalizeString(): String {
-    val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
-    return normalized.replace(accentRegex, "")
 }

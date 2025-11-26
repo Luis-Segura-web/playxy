@@ -56,9 +56,16 @@ class MainViewModel @Inject constructor(
     }
     
     private suspend fun loadStats() {
+        val parentalEnabled = repository.isParentalControlEnabled()
+        val blockedLive = if (parentalEnabled) repository.getBlockedCategories("live") else emptySet()
+        val blockedVod = if (parentalEnabled) repository.getBlockedCategories("vod") else emptySet()
+        val blockedSeries = if (parentalEnabled) repository.getBlockedCategories("series") else emptySet()
         val liveStreams = repository.getLiveStreams()
+            .filterNot { parentalEnabled && (blockedLive.contains(it.categoryId) || it.isAdult) }
         val vodStreams = repository.getVodStreams()
+            .filterNot { parentalEnabled && (blockedVod.contains(it.categoryId) || it.isAdult) }
         val series = repository.getSeries()
+            .filterNot { parentalEnabled && blockedSeries.contains(it.categoryId) }
         val lastLiveUpdate = repository.getLastLiveUpdateTime()
         val lastVodUpdate = repository.getLastVodUpdateTime()
         val lastSeriesUpdate = repository.getLastSeriesUpdateTime()
@@ -75,6 +82,9 @@ class MainViewModel @Inject constructor(
     
     fun onDestinationChange(destination: MainDestination) {
         _state.value = _state.value.copy(currentDestination = destination)
+        viewModelScope.launch {
+            loadStats()
+        }
     }
     
     fun onSearchQueryChange(query: String) {

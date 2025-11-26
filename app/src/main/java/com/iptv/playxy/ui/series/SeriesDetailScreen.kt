@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
@@ -46,6 +47,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
@@ -88,6 +91,10 @@ fun SeriesDetailScreen(
     val snackbarScope = rememberCoroutineScope()
     var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
     var currentPlaybackDuration by remember { mutableLongStateOf(0L) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    var accessGranted by remember { mutableStateOf(false) }
+    var gatePin by remember { mutableStateOf("") }
 
     // Shared PlayerManager instance - survives composition changes
     val playerManager = LocalPlayerManager.current
@@ -97,8 +104,23 @@ fun SeriesDetailScreen(
     var isEpisodeSwitching by remember { mutableStateOf(false) }
 
     // Load series info when screen opens
-    LaunchedEffect(seriesId, categoryId) {
-        viewModel.loadSeriesInfo(seriesId, categoryId)
+    LaunchedEffect(seriesId, categoryId, seriesListUi.categories) {
+        gatePin = ""
+        pinError = null
+        accessGranted = false
+        val restricted = seriesVm.requiresPinForCategory(categoryId)
+        if (restricted) {
+            showPinDialog = true
+        } else {
+            showPinDialog = false
+            accessGranted = true
+        }
+    }
+
+    LaunchedEffect(seriesId, categoryId, accessGranted) {
+        if (accessGranted) {
+            viewModel.loadSeriesInfo(seriesId, categoryId)
+        }
     }
 
     val shouldShowHeaderPlayer = isPlaying && currentEpisode != null && userProfile != null
@@ -269,7 +291,62 @@ fun SeriesDetailScreen(
         onDispose { playerManager.setTransportActions(null, null) }
     }
 
-    if (isFullscreen && currentEpisode != null && userProfile != null && currentStreamUrl != null) {
+    if (showPinDialog) {
+        AlertDialog(
+            onDismissRequest = { onBackClick() },
+            title = { Text("PIN requerido") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Ingresa el PIN para acceder a esta serie.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedTextField(
+                        value = gatePin,
+                        onValueChange = { gatePin = sanitizePinInput(it) },
+                        label = { Text("PIN") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    if (pinError != null) {
+                        Text(
+                            text = pinError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val sanitized = sanitizePinInput(gatePin)
+                    gatePin = sanitized
+                    if (sanitized.length != 4) {
+                        pinError = "Debes ingresar un PIN de 4 dígitos."
+                        return@Button
+                    }
+                    snackbarScope.launch {
+                        val valid = seriesVm.validateParentalPin(sanitized)
+                        if (valid) {
+                            accessGranted = true
+                            showPinDialog = false
+                            pinError = null
+                        } else {
+                            pinError = "PIN incorrecto."
+                        }
+                    }
+                }) {
+                    Text("Confirmar")
+                }
+            },
+            dismissButton = { TextButton(onClick = { onBackClick() }) { Text("Cancelar") } }
+        )
+    }
+
+    if (!accessGranted) {
+        Box(modifier = Modifier.fillMaxSize())
+    } else if (isFullscreen && currentEpisode != null && userProfile != null && currentStreamUrl != null) {
         // Fullscreen player in landscape mode
         FullscreenPlayer(
             streamUrl = currentStreamUrl,
@@ -334,7 +411,7 @@ fun SeriesDetailScreen(
                         val ep = currentEpisode!!
                         SeriesMiniPlayer(
                             streamUrl = currentStreamUrl,
-                            episodeTitle = ep.title ?: "Episodio ${ep.episodeNum}",
+                            episodeTitle = displayEpisodeTitle(ep, series?.name),
                             seasonNumber = ep.season,
                             episodeNumber = ep.episodeNum,
                             playerManager = playerManager,
@@ -575,13 +652,13 @@ fun SeriesDetailScreen(
                                 )
                                 if (primaryEpisode != null) {
                                     Text(
-                                        text = "S${primaryEpisode.season}:E${primaryEpisode.episodeNum} - ${primaryEpisode.title ?: "Episodio ${primaryEpisode.episodeNum}"}",
+                                        text = displayEpisodeTitle(primaryEpisode, uiState.series?.name),
                                         style = MaterialTheme.typography.labelSmall,
                                         maxLines = 1,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                 }
-                            }
+                        }
                         }
 
                         // Synopsis
@@ -655,12 +732,16 @@ fun SeriesDetailScreen(
                         episodes.forEach { ep ->
                             EpisodeCard(
                                 episode = ep,
+                                seriesName = uiState.series?.name,
                                 episodeProgress = uiState.episodeProgress[ep.id],
                                 isCurrentlyPlaying = uiState.currentPlayingEpisodeId == ep.id,
                                 currentPlaybackPosition = if (uiState.currentPlayingEpisodeId == ep.id) currentPlaybackPosition else 0L,
                                 currentPlaybackDuration = if (uiState.currentPlayingEpisodeId == ep.id) currentPlaybackDuration else 0L,
                                 onPlay = {
-                                    uiState.series?.let { s -> seriesVm.onSeriesOpened(s.seriesId) }
+                                    val series = uiState.series
+                                    if (series != null) {
+                                        seriesVm.onSeriesOpened(series.seriesId)
+                                    }
                                     viewModel.setCurrentPlayingEpisode(ep.id)
                                     playEpisode(ep)
                                 }
@@ -715,6 +796,7 @@ fun SynopsisBlock(synopsis: String?, expanded: Boolean, onToggle: () -> Unit) {
 @Composable
 fun EpisodeCard(
     episode: Episode,
+    seriesName: String? = null,
     episodeProgress: EpisodeProgressEntity? = null,
     isCurrentlyPlaying: Boolean = false,
     currentPlaybackPosition: Long = 0L,
@@ -812,7 +894,7 @@ fun EpisodeCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "S${episode.season}:E${episode.episodeNum} - ${episode.title ?: "Episodio ${episode.episodeNum}"}",
+                        text = displayEpisodeTitle(episode, seriesName),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (isCurrentlyPlaying) 
@@ -886,4 +968,39 @@ fun InfoRow(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurface
         )
     }
+}
+
+private fun sanitizePinInput(input: String): String = input.filter { it.isDigit() }.take(4)
+
+private fun displayEpisodeTitle(episode: Episode, seriesName: String? = null): String {
+    val seasonCode = episode.season.toString().padStart(2, '0')
+    val episodeCode = episode.episodeNum.toString().padStart(2, '0')
+    val base = "S${seasonCode}E${episodeCode}"
+    val rawTitle = episode.title?.trim().orEmpty()
+    val cleaned = cleanEpisodeTitle(rawTitle, seriesName, seasonCode, episodeCode)
+    val finalTitle = cleaned.ifBlank { "Episodio $episodeCode" }
+    return "$base - $finalTitle"
+}
+
+private fun cleanEpisodeTitle(title: String, seriesName: String?, seasonCode: String, episodeCode: String): String {
+    var result = title
+    val series = seriesName?.trim().orEmpty()
+    if (series.isNotEmpty()) {
+        val lowerSeries = series.lowercase()
+        val lowerTitle = result.lowercase()
+        if (lowerTitle.startsWith(lowerSeries)) {
+            result = result.drop(series.length).trimStart(' ', '-', ':', '|', '.')
+        }
+        // Caso "Serie - Episodio"
+        val dashParts = result.split(" - ", limit = 2)
+        if (dashParts.size == 2 && dashParts[0].equals(series, ignoreCase = true)) {
+            result = dashParts[1].trim()
+        }
+    }
+    // Quitar prefijos tipo S01E06 o S1E6 para evitar duplicados
+    val codeRegex = Regex("^S0?${seasonCode.toInt()}E0?${episodeCode.toInt()}\\s*[-:|]?\\s*", RegexOption.IGNORE_CASE)
+    result = result.replace(codeRegex, "")
+    // También remover patrones genéricos SxxExx al inicio
+    result = result.replace(Regex("^S\\d{1,2}E\\d{1,2}\\s*[-:|]?\\s*", RegexOption.IGNORE_CASE), "")
+    return result.trim()
 }

@@ -25,7 +25,8 @@ fun PlayerSurface(
             (LayoutInflater.from(context).inflate(R.layout.player_compose_view, null, false) as PlayerView).apply {
                 this.player = playerManager.getPlayer()
                 this.resizeMode = resizeMode
-                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                // Evitamos indicador nativo para no duplicar con el de Compose.
+                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                 setKeepContentOnPlayerReset(true)
                 this.keepScreenOn = keepScreenOn
             }.also { view ->

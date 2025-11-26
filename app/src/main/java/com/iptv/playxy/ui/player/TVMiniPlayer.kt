@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fullscreen
@@ -19,11 +21,11 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -145,40 +147,53 @@ private fun TVMiniOverlay(
             }
         }
 
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
             if (state.hasError) {
-                Text(
-                    text = state.errorMessage ?: "Contenido no disponible",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                FilledTonalButton(onClick = onReplay) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
-                    Text(text = "Reintentar", modifier = Modifier.padding(start = 8.dp))
+                Surface(
+                    color = Color.Red.copy(alpha = 0.85f),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-48).dp)
+                ) {
+                    Text(
+                        text = "Error: ${state.errorMessage ?: "Sin código"}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
                 }
             }
             Row(
-                modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.align(Alignment.Center)
             ) {
-                IconButton(onClick = onPrevious) {
+                IconButton(
+                    onClick = onPrevious,
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
                     Icon(imageVector = Icons.Default.SkipPrevious, contentDescription = "Anterior", tint = Color.White)
                 }
-                IconButton(onClick = onTogglePlay) {
+                IconButton(
+                    onClick = { if (state.hasError) onReplay() else onTogglePlay() },
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
                     Icon(
-                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pausar" else "Reproducir",
+                        imageVector = if (state.hasError) Icons.Default.Refresh else if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (state.hasError) "Reintentar" else if (state.isPlaying) "Pausar" else "Reproducir",
                         tint = Color.White
                     )
                 }
-                IconButton(onClick = onNext) {
+                IconButton(
+                    onClick = onNext,
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
                     Icon(imageVector = Icons.Default.SkipNext, contentDescription = "Siguiente", tint = Color.White)
                 }
             }
@@ -193,7 +208,7 @@ private fun TVMiniOverlay(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                     )
                 )
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

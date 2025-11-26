@@ -2,6 +2,8 @@ package com.iptv.playxy.ui.series
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.iptv.playxy.data.db.FavoriteSeriesDao
 import com.iptv.playxy.data.db.FavoriteSeriesEntity
 import com.iptv.playxy.data.db.RecentSeriesDao
@@ -9,20 +11,28 @@ import com.iptv.playxy.data.db.RecentSeriesEntity
 import com.iptv.playxy.data.repository.IptvRepository
 import com.iptv.playxy.domain.Category
 import com.iptv.playxy.domain.Series
+import com.iptv.playxy.ui.main.SortOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
-import javax.inject.Inject
+import kotlinx.coroutines.withContext
 
 data class SeriesUiState(
     val categories: List<Category> = emptyList(),
-    val selectedCategory: Category = Category("all","Todas","0"),
+    val selectedCategory: Category = Category("all", "Todas", "0"),
     val series: List<Series> = emptyList(),
     val isLoading: Boolean = false,
     val favoriteIds: Set<String> = emptySet(),
-    val recentIds: List<String> = emptyList()
+    val recentIds: List<String> = emptyList(),
+    val parentalEnabled: Boolean = false,
+    val blockedCategories: Set<String> = emptySet(),
+    val searchQuery: String = "",
+    val sortOrder: SortOrder = SortOrder.DEFAULT
 )
 
 @HiltViewModel
@@ -35,11 +45,35 @@ class SeriesViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SeriesUiState())
     val uiState: StateFlow<SeriesUiState> = _uiState.asStateFlow()
 
-    // In-memory favorites & recents for Series
+    private val _pagingFlow = MutableStateFlow<kotlinx.coroutines.flow.Flow<PagingData<Series>>>(flowOf(PagingData.empty()))
+    val pagingFlow: StateFlow<kotlinx.coroutines.flow.Flow<PagingData<Series>>> = _pagingFlow.asStateFlow()
+
     private val favoriteIds = mutableSetOf<String>()
     private val recentIds = ArrayDeque<String>()
-    private val maxRecents = 30
-    private val nameCache = mutableMapOf<String, NameCache>()
+
+    init {
+        viewModelScope.launch {
+            loadFavoriteIds()
+            loadRecentIds()
+            loadCategories()
+        }
+    }
+
+    private fun normalizeCategories(list: List<Category>, defaultAllName: String): List<Category> {
+        val normalized = list.map {
+            if (it.categoryName.equals("Todos", ignoreCase = true) || it.categoryName.equals("Todas", ignoreCase = true))
+                it.copy(categoryName = defaultAllName)
+            else it
+        }
+        return normalized.distinctBy { it.categoryId to it.categoryName.lowercase() }
+    }
+
+    private suspend fun refreshParentalState(): Pair<Boolean, Set<String>> {
+        val enabled = repository.isParentalControlEnabled()
+        val blocked = if (enabled) repository.getBlockedCategories("series") else emptySet()
+        _uiState.value = _uiState.value.copy(parentalEnabled = enabled, blockedCategories = blocked)
+        return enabled to blocked
+    }
 
     private suspend fun loadFavoriteIds() {
         val favs = favoriteSeriesDao.getAllFavorites()
@@ -55,31 +89,14 @@ class SeriesViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(recentIds = recentIds.toList())
     }
 
-    init {
-        loadCategories()
-        viewModelScope.launch {
-            loadFavoriteIds()
-            loadRecentIds()
-        }
-    }
-
-    private fun normalizeCategories(list: List<Category>, defaultAllName: String): List<Category> {
-        val normalized = list.map {
-            if (it.categoryName.equals("Todos", ignoreCase = true) || it.categoryName.equals("Todas", ignoreCase = true))
-                it.copy(categoryName = defaultAllName)
-            else it
-        }
-        return normalized.distinctBy { it.categoryId to it.categoryName.lowercase() }
-    }
-
     private fun loadCategories() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val providerCategoriesRaw = repository.getCategories("series")
-                val blocked = repository.getBlockedCategories("series")
+                val (parentalEnabled, blocked) = refreshParentalState()
                 val providerCategories = normalizeCategories(providerCategoriesRaw, "Todas")
-                    .filterNot { blocked.contains(it.categoryId) }
+                    .filterNot { parentalEnabled && blocked.contains(it.categoryId) }
                 val allCategories = buildList {
                     add(Category("all", "Todas", "0"))
                     add(Category("favorites", "Favoritos", "0"))
@@ -88,10 +105,10 @@ class SeriesViewModel @Inject constructor(
                 }
                 _uiState.value = _uiState.value.copy(
                     categories = allCategories,
-                    isLoading = false,
-                    selectedCategory = allCategories.first { it.categoryId == "all" }
+                    selectedCategory = allCategories.first { it.categoryId == "all" },
+                    isLoading = false
                 )
-                loadAllSeries()
+                refreshPaging()
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.value = _uiState.value.copy(isLoading = false)
@@ -100,49 +117,70 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun selectCategory(category: Category) {
+        if (_uiState.value.selectedCategory.categoryId == category.categoryId) return
         _uiState.value = _uiState.value.copy(selectedCategory = category)
-        when (category.categoryId) {
-            "all" -> loadAllSeries()
-            "favorites" -> loadFavoriteSeries()
-            "recents" -> loadRecentSeries()
-            else -> loadSeries(category.categoryId)
-        }
+        refreshPaging()
     }
 
-    private fun loadFavoriteSeries() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            try {
-                val all = repository.getSeries()
-                val favs = all.filter { favoriteIds.contains(it.seriesId) }
-                favs.forEach { cacheNameData(it) }
-                _uiState.value = _uiState.value.copy(series = favs, isLoading = false)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                _uiState.value = _uiState.value.copy(isLoading = false)
-            }
-        }
+    fun updateFilters(search: String, sortOrder: SortOrder) {
+        if (_uiState.value.searchQuery == search && _uiState.value.sortOrder == sortOrder) return
+        _uiState.value = _uiState.value.copy(searchQuery = search, sortOrder = sortOrder)
+        refreshPaging()
     }
 
-    private fun loadRecentSeries() {
+    fun refreshCurrentCategory() {
+        refreshPaging()
+    }
+
+    private fun refreshPaging() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            try {
-                val all = repository.getSeries()
-                // Mostrar solo la última serie reproducida (sin duplicados)
-                val lastSeriesId = recentIds.firstOrNull()
-                val recents = if (lastSeriesId != null) {
-                    all.filter { it.seriesId == lastSeriesId }
-                } else {
-                    emptyList()
+            val (parentalEnabled, blockedCategories) = refreshParentalState()
+            val category = _uiState.value.selectedCategory
+            val search = _uiState.value.searchQuery.ifBlank { null }
+            val sortOrder = mapSortOrder(_uiState.value.sortOrder)
+            val flow = when (category.categoryId) {
+                "favorites" -> {
+                    val favs = withContext(Dispatchers.Default) {
+                        repository.getSeries()
+                            .filterNot { parentalEnabled && blockedCategories.contains(it.categoryId) }
+                            .filter { favoriteIds.contains(it.seriesId) }
+                            .distinctBy { it.seriesId }
+                    }
+                    flowOf(PagingData.from(favs))
                 }
-                recents.forEach { cacheNameData(it) }
-                _uiState.value = _uiState.value.copy(series = recents, isLoading = false)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                _uiState.value = _uiState.value.copy(isLoading = false)
+                "recents" -> {
+                    val recents = withContext(Dispatchers.IO) { recentSeriesDao.getRecent() }
+                    recentIds.clear()
+                    recents.forEach { recentIds.addLast(it.seriesId) }
+                    val recentsSeries = withContext(Dispatchers.Default) {
+                        val filtered = repository.getSeries()
+                            .filterNot { parentalEnabled && blockedCategories.contains(it.categoryId) }
+                            .associateBy { it.seriesId }
+                        recents.mapNotNull { filtered[it.seriesId] }.distinctBy { it.seriesId }
+                    }
+                    _uiState.value = _uiState.value.copy(recentIds = recentIds.toList())
+                    flowOf(PagingData.from(recentsSeries))
+                }
+                else -> {
+                    val categoryId = if (category.categoryId == "all") null else category.categoryId
+                    repository.getPagedSeries(
+                        categoryId = categoryId,
+                        searchQuery = search,
+                        blockedCategories = blockedCategories.toList(),
+                        sortOrder = sortOrder,
+                        pageSize = 50
+                    ).cachedIn(viewModelScope)
+                }
             }
+            _pagingFlow.value = flow
         }
+    }
+
+    private fun mapSortOrder(order: SortOrder): Int = when (order) {
+        SortOrder.DEFAULT -> 0
+        SortOrder.A_TO_Z -> 1
+        SortOrder.Z_TO_A -> 2
+        else -> 0
     }
 
     fun toggleFavorite(seriesId: String) {
@@ -152,9 +190,7 @@ class SeriesViewModel @Inject constructor(
                 FavoriteSeriesEntity(seriesId = seriesId, timestamp = System.currentTimeMillis())
             )
             loadFavoriteIds()
-            if (_uiState.value.selectedCategory?.categoryId == "favorites") {
-                loadFavoriteSeries()
-            }
+            if (_uiState.value.selectedCategory.categoryId == "favorites") refreshPaging()
         }
     }
 
@@ -167,90 +203,15 @@ class SeriesViewModel @Inject constructor(
             val limit = repository.getRecentsLimit()
             recentSeriesDao.trim(limit)
             loadRecentIds()
-            if (_uiState.value.selectedCategory?.categoryId == "recents") loadRecentSeries()
+            if (_uiState.value.selectedCategory.categoryId == "recents") refreshPaging()
         }
     }
 
-    private fun loadSeries(categoryId: String) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            try {
-                val blockedCategories = repository.getBlockedCategories("series")
-                val series = repository.getSeriesByCategory(categoryId)
-                    .filterNot { blockedCategories.contains(it.categoryId) }
-                _uiState.value = _uiState.value.copy(
-                    series = series,
-                    isLoading = false
-                )
-                series.forEach { cacheNameData(it) }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                _uiState.value = _uiState.value.copy(isLoading = false)
-            }
-        }
+    suspend fun requiresPinForCategory(categoryId: String): Boolean {
+        return repository.isCategoryRestricted("series", categoryId)
     }
 
-    private fun loadAllSeries() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            try {
-                val blockAdult = repository.isParentalControlEnabled()
-                val blockedCategories = repository.getBlockedCategories("series")
-                val series = repository.getSeries().distinctBy { it.seriesId }
-                    .filterNot { blockedCategories.contains(it.categoryId) }
-                _uiState.value = _uiState.value.copy(
-                    series = series,
-                    isLoading = false
-                )
-                series.forEach { cacheNameData(it) }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                _uiState.value = _uiState.value.copy(isLoading = false)
-            }
-        }
-    }
-
-    fun getNormalizedName(series: Series): String {
-        return nameCache[series.seriesId]?.normalizedName ?: cacheNameData(series).normalizedName
-    }
-
-    fun getNaturalSortKey(series: Series): String {
-        return nameCache[series.seriesId]?.sortKey ?: cacheNameData(series).sortKey
-    }
-
-    private fun cacheNameData(series: Series): NameCache {
-        val normalized = normalizeString(series.name)
-        val sortKey = naturalSortKey(series.name)
-        return NameCache(normalizedName = normalized, sortKey = sortKey).also {
-            nameCache[series.seriesId] = it
-        }
-    }
-
-    private fun normalizeString(input: String): String {
-        val normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
-        return normalized.replace(accentRegex, "")
-    }
-
-    private fun naturalSortKey(input: String): String {
-        val builder = StringBuilder()
-        var lastIndex = 0
-        numberRegex.findAll(input).forEach { match ->
-            builder.append(input.substring(lastIndex, match.range.first).lowercase())
-            builder.append(match.value.padStart(10, '0'))
-            lastIndex = match.range.last + 1
-        }
-        if (lastIndex < input.length) {
-            builder.append(input.substring(lastIndex).lowercase())
-        }
-        return builder.toString()
+    suspend fun validateParentalPin(pin: String): Boolean {
+        return repository.verifyParentalPin(pin)
     }
 }
-
-private val accentRegex = Regex("\\p{M}")
-private val numberRegex = Regex("\\d+")
-private const val RECENTS_LIMIT = 12
-
-private data class NameCache(
-    val normalizedName: String,
-    val sortKey: String
-)

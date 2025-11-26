@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">playxy</string>
+    <string name="app_name">nextFTV</string>
     <string name="playback_notification_text">Reproducción en curso</string>
     <string name="playback_notification_channel">Reproducción multimedia</string>
 </resources>

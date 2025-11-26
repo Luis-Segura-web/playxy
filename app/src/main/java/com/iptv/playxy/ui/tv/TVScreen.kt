@@ -5,11 +5,28 @@ package com.iptv.playxy.ui.tv
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.*
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.compose.collectAsLazyPagingItems
+import com.iptv.playxy.domain.LiveStream
 import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.components.CategoryBar
@@ -19,7 +36,7 @@ import com.iptv.playxy.ui.player.PlayerType
 import com.iptv.playxy.ui.player.TVMiniPlayer
 import com.iptv.playxy.ui.tv.components.ChannelListView
 import com.iptv.playxy.util.StreamUrlBuilder
-import java.text.Normalizer
+import kotlinx.coroutines.launch
 
 @Composable
 fun TVScreen(
@@ -27,31 +44,26 @@ fun TVScreen(
     searchQuery: String = "",
     sortOrder: SortOrder = SortOrder.DEFAULT
 ) {
+    LaunchedEffect(searchQuery, sortOrder) { viewModel.updateFilters(searchQuery, sortOrder) }
     val currentChannel by viewModel.currentChannel.collectAsState()
-    val categories by viewModel.categories.collectAsState()
-    val selectedCategory by viewModel.selectedCategory.collectAsState()
-    val filteredChannels by viewModel.filteredChannels.collectAsState()
-    val favoriteChannelIds by viewModel.favoriteChannelIds.collectAsState()
+    val categories by viewModel.uiState.collectAsState()
+    val pagingFlow by viewModel.pagingFlow.collectAsState()
+    val channelsPaging = pagingFlow.collectAsLazyPagingItems()
     val userProfile by viewModel.userProfile.collectAsState()
     val playerManager = LocalPlayerManager.current
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
-    val highlightedCategories = remember(currentChannel, selectedCategory) {
-        buildSet {
-            currentChannel?.categoryId?.let { add(it) }
-            selectedCategory?.categoryId?.let { add(it) }
-        }
-    }
-    var isChannelSwitching by remember { mutableStateOf(false) }
     val fullscreenState = LocalFullscreenState.current
     val isFullscreen = fullscreenState.value
 
-    LaunchedEffect(Unit) {
-        viewModel.initialize()
-    }
+    var isChannelSwitching by remember { mutableStateOf(false) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pinInput by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    var pendingChannel by remember { mutableStateOf<LiveStream?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(playbackState.streamUrl) {
         if (playbackState.streamUrl == null && currentChannel != null && !isChannelSwitching) {
-            viewModel.stopPlayback()
             fullscreenState.value = false
         }
         if (playbackState.streamUrl != null) {
@@ -59,71 +71,93 @@ fun TVScreen(
         }
     }
 
+    if (showPinDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showPinDialog = false
+                pendingChannel = null
+                pinInput = ""
+                pinError = null
+            },
+            title = { Text("PIN requerido") },
+            text = {
+                Column {
+                    Text("Ingresa el PIN para abrir esta categoría oculta.")
+                    OutlinedTextField(
+                        value = pinInput,
+                        onValueChange = { pinInput = sanitizePinInput(it) },
+                        label = { Text("PIN") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    if (pinError != null) {
+                        Text(text = pinError!!, color = androidx.compose.material3.MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val sanitized = sanitizePinInput(pinInput)
+                    if (sanitized.length != 4) {
+                        pinError = "Debes ingresar un PIN de 4 dígitos."
+                        return@Button
+                    }
+                    coroutineScope.launch {
+                        val valid = viewModel.validateParentalPin(sanitized)
+                        if (valid) {
+                            val channel = pendingChannel
+                            showPinDialog = false
+                            pinError = null
+                            pendingChannel = null
+                            if (channel != null) {
+                                isChannelSwitching = true
+                                viewModel.playChannel(channel)
+                            }
+                        } else {
+                            pinError = "PIN incorrecto."
+                        }
+                    }
+                }) { Text("Confirmar") }
+            },
+            dismissButton = { TextButton(onClick = { showPinDialog = false; pendingChannel = null; pinInput = "" }) { Text("Cancelar") } }
+        )
+    }
+
     if (isFullscreen && currentChannel != null && userProfile != null) {
         DisposableEffect(currentChannel!!.streamId) {
             playerManager.setTransportActions(
                 onNext = {
                     isChannelSwitching = true
-                    viewModel.playNextChannel()
+                    // navigation not kept in paging demo
                 },
                 onPrevious = {
                     isChannelSwitching = true
-                    viewModel.playPreviousChannel()
                 }
             )
             onDispose { playerManager.setTransportActions(null, null) }
         }
-        // Fullscreen player in landscape mode
         FullscreenPlayer(
             streamUrl = StreamUrlBuilder.buildLiveStreamUrl(userProfile!!, currentChannel!!),
             title = currentChannel!!.name,
             playerType = PlayerType.TV,
             playerManager = playerManager,
-            onBack = { fullscreenState.value = false },
-            onPreviousItem = {
-                isChannelSwitching = true
-                viewModel.playPreviousChannel()
-            },
-            onNextItem = {
-                isChannelSwitching = true
-                viewModel.playNextChannel()
-            },
-            hasPrevious = viewModel.hasPreviousChannel(),
-            hasNext = viewModel.hasNextChannel()
+            onBack = { fullscreenState.value = false }
         )
     } else {
         Column(modifier = Modifier.fillMaxSize()) {
             val shouldShowMiniPlayer = currentChannel != null && userProfile != null &&
                 (playbackState.streamUrl != null || isChannelSwitching)
             if (shouldShowMiniPlayer) {
-                DisposableEffect(currentChannel!!.streamId) {
-                    playerManager.setTransportActions(
-                        onNext = {
-                            isChannelSwitching = true
-                            viewModel.playNextChannel()
-                        },
-                        onPrevious = {
-                            isChannelSwitching = true
-                            viewModel.playPreviousChannel()
-                        }
-                    )
-                    onDispose { playerManager.setTransportActions(null, null) }
-                }
                 TVMiniPlayer(
                     streamUrl = StreamUrlBuilder.buildLiveStreamUrl(userProfile!!, currentChannel!!),
                     channelName = currentChannel!!.name,
                     playerManager = playerManager,
-                    onPreviousChannel = {
-                        isChannelSwitching = true
-                        viewModel.playPreviousChannel()
-                    },
-                    onNextChannel = {
-                        isChannelSwitching = true
-                        viewModel.playNextChannel()
-                    },
+                    onPreviousChannel = {},
+                    onNextChannel = {},
                     onClose = {
                         isChannelSwitching = false
-                        viewModel.stopPlayback()
+                        playerManager.stopPlayback()
                         fullscreenState.value = false
                     },
                     onFullscreen = { fullscreenState.value = true }
@@ -131,49 +165,32 @@ fun TVScreen(
             }
 
             CategoryBar(
-                categories = categories,
-                selectedCategoryId = selectedCategory?.categoryId,
-                highlightedCategoryIds = highlightedCategories,
+                categories = categories.categories,
+                selectedCategoryId = categories.selectedCategory?.categoryId,
+                highlightedCategoryIds = emptySet(),
                 onCategorySelected = { category ->
                     viewModel.selectCategory(category)
                 },
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Apply search and sort to channels
-            val processedChannels by remember(filteredChannels, searchQuery, sortOrder) {
-                derivedStateOf {
-                    var channels = filteredChannels
-                    
-                    // Apply search filter (accent-insensitive)
-                    if (searchQuery.isNotEmpty()) {
-                        val normalizedQuery = searchQuery.normalizeString()
-                        channels = channels.filter {
-                            viewModel.getNormalizedName(it).contains(normalizedQuery, ignoreCase = true)
-                        }
-                    }
-                    
-                    // Apply sorting
-                    when (sortOrder) {
-                        SortOrder.A_TO_Z -> channels.sortedBy { viewModel.getNaturalSortKey(it) }
-                        SortOrder.Z_TO_A -> channels.sortedByDescending { viewModel.getNaturalSortKey(it) }
-                        SortOrder.DATE_NEWEST, SortOrder.DATE_OLDEST, SortOrder.DEFAULT -> channels
-                    }
-                }
-            }
-
-            LaunchedEffect(processedChannels) {
-                viewModel.updateOrderedChannels(processedChannels)
-            }
-
-            // Channel List (Scrollable, takes remaining space)
             ChannelListView(
-                channels = processedChannels,
-                favoriteChannelIds = favoriteChannelIds,
+                channels = channelsPaging,
+                favoriteChannelIds = categories.favoriteChannelIds,
                 currentChannelId = currentChannel?.streamId,
                 onChannelClick = { channel ->
-                    isChannelSwitching = true
-                    viewModel.playChannel(channel)
+                    coroutineScope.launch {
+                        val restricted = viewModel.requiresPinForCategory(channel.categoryId)
+                        if (restricted) {
+                            pinInput = ""
+                            pinError = null
+                            pendingChannel = channel
+                            showPinDialog = true
+                        } else {
+                            isChannelSwitching = true
+                            viewModel.playChannel(channel)
+                        }
+                    }
                 },
                 onFavoriteClick = { channel ->
                     viewModel.toggleFavorite(channel)
@@ -184,8 +201,4 @@ fun TVScreen(
     }
 }
 
-// Helper function to remove accents from strings for search
-private fun String.normalizeString(): String {
-    val normalized = Normalizer.normalize(this, Normalizer.Form.NFD)
-    return normalized.replace("\\p{M}".toRegex(), "")
-}
+private fun sanitizePinInput(input: String): String = input.filter { it.isDigit() }.take(4)

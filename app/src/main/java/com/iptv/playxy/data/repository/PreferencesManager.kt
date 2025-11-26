@@ -50,7 +50,7 @@ class PreferencesManager @Inject constructor(
     }
 
     companion object {
-        const val DEFAULT_RECENTS_LIMIT = 12
+        const val DEFAULT_RECENTS_LIMIT = 15
         private const val KEY_RECENTS_LIMIT = "recents_limit"
         private const val KEY_PARENTAL_ENABLED = "parental_enabled"
         private const val KEY_PARENTAL_PIN = "parental_pin"

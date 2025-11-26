@@ -32,6 +32,29 @@ interface LiveStreamDao {
     @Query("SELECT * FROM live_streams WHERE streamId = :streamId AND categoryId = :categoryId")
     suspend fun getLiveStream(streamId: String, categoryId: String): LiveStreamEntity?
 
+    @Query(
+        """
+        SELECT * FROM live_streams
+        WHERE (:categoryId IS NULL OR categoryId = :categoryId)
+          AND (:searchQuery IS NULL OR name LIKE '%' || :searchQuery || '%')
+          AND (:allowBlocked = 1 OR categoryId NOT IN (:blockedCategories))
+          AND (:blockAdult = 0 OR isAdult = 0)
+        ORDER BY
+          CASE WHEN :sortOrder = 0 THEN rowid END ASC,
+          CASE WHEN :sortOrder = 1 THEN name COLLATE NOCASE END ASC,
+          CASE WHEN :sortOrder = 2 THEN name COLLATE NOCASE END DESC,
+          rowid ASC
+        """
+    )
+    fun pagingLiveStreams(
+        categoryId: String?,
+        searchQuery: String?,
+        allowBlocked: Boolean,
+        blockedCategories: List<String>,
+        blockAdult: Boolean,
+        sortOrder: Int
+    ): androidx.paging.PagingSource<Int, LiveStreamEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(streams: List<LiveStreamEntity>)
     
@@ -52,6 +75,31 @@ interface VodStreamDao {
 
     @Query("SELECT * FROM vod_streams WHERE streamId = :streamId AND categoryId = :categoryId")
     suspend fun getVodStream(streamId: String, categoryId: String): VodStreamEntity?
+    
+    @androidx.room.Query(
+        """
+        SELECT * FROM vod_streams
+        WHERE (:categoryId IS NULL OR categoryId = :categoryId)
+          AND (:searchQuery IS NULL OR name LIKE '%' || :searchQuery || '%')
+          AND (:allowBlocked = 1 OR categoryId NOT IN (:blockedCategories))
+          AND (:blockAdult = 0 OR isAdult = 0)
+        ORDER BY
+          CASE WHEN :sortOrder = 0 THEN rowid END ASC,
+          CASE WHEN :sortOrder = 1 THEN name END COLLATE NOCASE ASC,
+          CASE WHEN :sortOrder = 2 THEN name END COLLATE NOCASE DESC,
+          CASE WHEN :sortOrder = 3 THEN added END DESC,
+          CASE WHEN :sortOrder = 4 THEN added END ASC,
+          rowid ASC
+        """
+    )
+    fun pagingVodStreams(
+        categoryId: String?,
+        searchQuery: String?,
+        allowBlocked: Boolean,
+        blockedCategories: List<String>,
+        blockAdult: Boolean,
+        sortOrder: Int
+    ): androidx.paging.PagingSource<Int, VodStreamEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(streams: List<VodStreamEntity>)
@@ -73,6 +121,27 @@ interface SeriesDao {
 
     @Query("SELECT * FROM series WHERE seriesId = :seriesId AND categoryId = :categoryId")
     suspend fun getSeries(seriesId: String, categoryId: String): SeriesEntity?
+
+    @Query(
+        """
+        SELECT * FROM series
+        WHERE (:categoryId IS NULL OR categoryId = :categoryId)
+          AND (:searchQuery IS NULL OR name LIKE '%' || :searchQuery || '%')
+          AND (:allowBlocked = 1 OR categoryId NOT IN (:blockedCategories))
+        ORDER BY
+          CASE WHEN :sortOrder = 0 THEN rowid END ASC,
+          CASE WHEN :sortOrder = 1 THEN name COLLATE NOCASE END ASC,
+          CASE WHEN :sortOrder = 2 THEN name COLLATE NOCASE END DESC,
+          rowid ASC
+        """
+    )
+    fun pagingSeries(
+        categoryId: String?,
+        searchQuery: String?,
+        allowBlocked: Boolean,
+        blockedCategories: List<String>,
+        sortOrder: Int
+    ): androidx.paging.PagingSource<Int, SeriesEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(series: List<SeriesEntity>)

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
@@ -14,19 +13,50 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Badge
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +64,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,6 +79,7 @@ import com.iptv.playxy.ui.series.SeriesScreen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -385,9 +417,10 @@ fun MainScreen(
                 .background(gradient)
                 .then(
                     if (!isFullscreen && !hideUiForPip) {
+                        val horizontal = if (state.currentDestination == MainDestination.TV) 0.dp else 14.dp
                         Modifier
                             .padding(paddingValues)
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .padding(horizontal = horizontal, vertical = 10.dp)
                     } else if (!isFullscreen && hideUiForPip) {
                         // Evita padding del scaffold cuando se oculta la UI por PiP
                         Modifier
@@ -643,190 +676,41 @@ fun SettingsContent(
     val limits = listOf(3, 6, 9, 12, 18, 24)
     val scrollState = rememberScrollState()
     var limitsExpanded by remember { mutableStateOf(false) }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(vertical = 12.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(
-            text = "Configuración",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    var showPinSetup by remember { mutableStateOf(false) }
+    var showPinPromptFor by remember { mutableStateOf<PinPromptPurpose?>(null) }
+    var showChangePin by remember { mutableStateOf(false) }
+    var showHiddenCategories by remember { mutableStateOf(false) }
+    var enableAfterPinSave by remember { mutableStateOf(false) }
+    var postPinSuccessAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var pinPromptError by remember { mutableStateOf<String?>(null) }
+    val settingsEvents = viewModel.events
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 2.dp,
-            shadowElevation = 0.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Sincronización de contenido",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = "Fuerza la recarga si notas datos desactualizados.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Button(
-                    onClick = onForceReload,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Recargar"
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Forzar recarga de contenido")
-                }
-            }
-        }
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 2.dp,
-            shadowElevation = 0.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Historial de recientes",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = "Límite de elementos recientes",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                ExposedDropdownMenuBox(
-                    expanded = limitsExpanded,
-                    onExpandedChange = { limitsExpanded = it }
-                ) {
-                    OutlinedTextField(
-                        value = "${uiState.recentsLimit}",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Límite de recientes") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = limitsExpanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = limitsExpanded,
-                        onDismissRequest = { limitsExpanded = false }
-                    ) {
-                        limits.forEach { limit ->
-                            DropdownMenuItem(
-                                text = { Text("$limit") },
-                                onClick = {
-                                    viewModel.onRecentsLimitSelected(limit)
-                                    limitsExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    text = "Limpiar recientes",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { viewModel.clearRecentChannels() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Limpiar canales recientes")
-                    }
-                    Button(onClick = { viewModel.clearRecentMovies() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Limpiar películas recientes")
-                    }
-                    Button(onClick = { viewModel.clearRecentSeries() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Limpiar series recientes")
-                    }
-                    Button(onClick = { viewModel.clearAllRecents() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Limpiar todos los recientes")
+    Box(modifier = Modifier.fillMaxSize()) {
+        LaunchedEffect(settingsEvents) {
+            settingsEvents.collect { event ->
+                when (event) {
+                    is com.iptv.playxy.ui.settings.SettingsEvent.ShowMessage -> {
+                        snackbarHostState.showSnackbar(event.message)
                     }
                 }
             }
         }
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 2.dp,
-            shadowElevation = 0.dp
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 12.dp)
+                .verticalScroll(scrollState),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Control parental",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column {
-                        Text("Activar control parental")
-                        Text(
-                            text = "Restringe el contenido según PIN.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = uiState.parentalEnabled,
-                        onCheckedChange = { viewModel.toggleParental(it) }
-                    )
-                }
-                OutlinedTextField(
-                    value = uiState.parentalPin,
-                    onValueChange = { viewModel.updatePin(it.take(6)) },
-                    label = { Text("PIN (hasta 6 dígitos)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    trailingIcon = {
-                        Button(
-                            onClick = { viewModel.savePin() },
-                            enabled = uiState.parentalPin.isNotBlank()
-                        ) {
-                            Text("Guardar PIN")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (uiState.isSaving) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            }
-        }
+            Text(
+                text = "Configuración",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
 
-        @Composable
-        fun CategoryChips(
-            title: String,
-            categories: List<Category>,
-            blocked: Set<String>,
-            type: String
-        ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
@@ -839,69 +723,646 @@ fun SettingsContent(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(text = title, style = MaterialTheme.typography.titleMedium)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Text(
+                        text = "Sincronización de contenido",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "Fuerza la recarga si notas datos desactualizados.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = onForceReload,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        categories.forEach { category ->
-                            val selected = blocked.contains(category.categoryId)
-                            FilterChip(
-                                selected = selected,
-                                onClick = { viewModel.toggleBlockedCategory(type, category.categoryId) },
-                                label = { Text(category.categoryName) }
-                            )
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Recargar"
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Forzar recarga de contenido")
+                    }
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 2.dp,
+                shadowElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Historial de recientes",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                Text(
+                    text = "Límite de elementos recientes (por defecto 15)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = uiState.recentsLimitInput,
+                    onValueChange = { viewModel.onRecentsLimitInputChange(it) },
+                    label = { Text("Límite de recientes") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    trailingIcon = {
+                        Button(onClick = { viewModel.saveRecentsLimit() }) {
+                            Text("Guardar")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                    Text(
+                        text = "Limpiar recientes",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { viewModel.clearRecentChannels() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Limpiar canales recientes")
+                        }
+                        Button(onClick = { viewModel.clearRecentMovies() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Limpiar películas recientes")
+                        }
+                        Button(onClick = { viewModel.clearRecentSeries() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Limpiar series recientes")
+                        }
+                        Button(onClick = { viewModel.clearAllRecents() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Limpiar todos los recientes")
                         }
                     }
                 }
             }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 2.dp,
+                shadowElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Control parental",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column {
+                            Text("Activar/Desactivar Control Parental")
+                            Text(
+                                text = "El acceso se protege con PIN de 4 dígitos.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = uiState.parentalEnabled,
+                            onCheckedChange = { checked ->
+                                coroutineScope.launch {
+                                    pinPromptError = null
+                                    val hasPin = viewModel.hasPinConfigured()
+                                    if (checked) {
+                                        if (!hasPin) {
+                                            enableAfterPinSave = true
+                                            postPinSuccessAction = null
+                                            showPinSetup = true
+                                        } else {
+                                            postPinSuccessAction = {
+                                                coroutineScope.launch {
+                                                    viewModel.setParentalEnabled(true)
+                                                    snackbarHostState.showSnackbar("Control parental activado.")
+                                                }
+                                            }
+                                            showPinPromptFor = PinPromptPurpose.ENABLE
+                                        }
+                                    } else {
+                                        if (!hasPin) {
+                                            viewModel.setParentalEnabled(false)
+                                        } else {
+                                            postPinSuccessAction = {
+                                                coroutineScope.launch {
+                                                    viewModel.setParentalEnabled(false)
+                                                    snackbarHostState.showSnackbar("Control parental desactivado.")
+                                                }
+                                            }
+                                            showPinPromptFor = PinPromptPurpose.DISABLE
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    Text(
+                        text = if (uiState.parentalEnabled) "Control Parental: Activado" else "Control Parental: Desactivado",
+                        color = if (uiState.parentalEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (viewModel.hasPinConfigured()) {
+                                        showChangePin = true
+                                    } else {
+                                        enableAfterPinSave = uiState.parentalEnabled
+                                        postPinSuccessAction = null
+                                        showPinSetup = true
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Cambiar PIN")
+                        }
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    pinPromptError = null
+                                    val hasPin = viewModel.hasPinConfigured()
+                                    if (!hasPin) {
+                                        enableAfterPinSave = uiState.parentalEnabled
+                                        postPinSuccessAction = { showHiddenCategories = true }
+                                        showPinSetup = true
+                                    } else if (uiState.parentalEnabled) {
+                                        postPinSuccessAction = { showHiddenCategories = true }
+                                        showPinPromptFor = PinPromptPurpose.OPEN_CATEGORIES
+                                    } else {
+                                        showHiddenCategories = true
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Configurar Categorías Ocultas")
+                        }
+                    }
+                    Text(
+                        text = "El control parental restringe categorías de canales, películas y series.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (uiState.isSaving) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+            ) {
+                Button(
+                    onClick = onLogout,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = "Cerrar sesión"
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cerrar sesión")
+                }
+            }
         }
 
-        CategoryChips(
-            title = "Ocultar categorías de canales",
-            categories = uiState.liveCategories,
-            blocked = uiState.blockedLive,
-            type = "live"
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
         )
-        CategoryChips(
-            title = "Ocultar categorías de películas",
-            categories = uiState.vodCategories,
-            blocked = uiState.blockedVod,
-            type = "vod"
-        )
-        CategoryChips(
-            title = "Ocultar categorías de series",
-            categories = uiState.seriesCategories,
-            blocked = uiState.blockedSeries,
-            type = "series"
-        )
+    }
 
-        Spacer(modifier = Modifier.weight(1f))
+    if (showPinSetup) {
+        PinSetupDialog(
+            onDismiss = {
+                showPinSetup = false
+                enableAfterPinSave = false
+                postPinSuccessAction = null
+            },
+            onSave = { pin ->
+                coroutineScope.launch {
+                    viewModel.configurePin(pin, enableAfterPinSave)
+                    snackbarHostState.showSnackbar("PIN configurado correctamente.")
+                    val action = postPinSuccessAction
+                    showPinSetup = false
+                    enableAfterPinSave = false
+                    postPinSuccessAction = null
+                    action?.invoke()
+                }
+            }
+        )
+    }
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
-            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-        ) {
-            Button(
-                onClick = onLogout,
+    if (showPinPromptFor != null) {
+        PinPromptDialog(
+            purpose = showPinPromptFor!!,
+            error = pinPromptError,
+            onDismiss = {
+                showPinPromptFor = null
+                pinPromptError = null
+                postPinSuccessAction = null
+            },
+            onConfirm = { pin ->
+                coroutineScope.launch {
+                    val isValid = viewModel.isPinValid(pin)
+                    if (isValid) {
+                        val action = postPinSuccessAction
+                        pinPromptError = null
+                        showPinPromptFor = null
+                        postPinSuccessAction = null
+                        action?.invoke()
+                    } else {
+                        pinPromptError = "PIN incorrecto."
+                    }
+                }
+            }
+        )
+    }
+
+    if (showChangePin) {
+        ChangePinDialog(
+            onDismiss = {
+                showChangePin = false
+            },
+            onSave = { currentPin, newPin ->
+                val updated = viewModel.changePin(currentPin, newPin)
+                if (updated) {
+                    snackbarHostState.showSnackbar("PIN actualizado correctamente.")
+                    showChangePin = false
+                }
+                updated
+            }
+        )
+    }
+
+    if (showHiddenCategories) {
+        HiddenCategoriesDialog(
+            liveCategories = uiState.liveCategories,
+            vodCategories = uiState.vodCategories,
+            seriesCategories = uiState.seriesCategories,
+            initialLive = uiState.blockedLive,
+            initialVod = uiState.blockedVod,
+            initialSeries = uiState.blockedSeries,
+            onDismiss = {
+                showHiddenCategories = false
+            },
+            onSave = { live, vod, series ->
+                coroutineScope.launch {
+                    viewModel.saveBlockedCategories(live, vod, series)
+                    showHiddenCategories = false
+                }
+            }
+        )
+    }
+}
+
+private enum class PinPromptPurpose {
+    ENABLE,
+    DISABLE,
+    OPEN_CATEGORIES
+}
+
+@Composable
+private fun PinSetupDialog(
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Configurar PIN") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Define un PIN numérico de 4 dígitos y confírmalo para activar el control parental.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { pin = sanitizePin(it) },
+                    label = { Text("Nuevo PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = confirmPin,
+                    onValueChange = { confirmPin = sanitizePin(it) },
+                    label = { Text("Confirmar PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+                if (error != null) {
+                    Text(
+                        text = error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val sanitizedPin = sanitizePin(pin)
+                val sanitizedConfirm = sanitizePin(confirmPin)
+                pin = sanitizedPin
+                confirmPin = sanitizedConfirm
+                if (sanitizedPin.length != 4 || sanitizedConfirm.length != 4) {
+                    error = "Debes ingresar un PIN de 4 dígitos."
+                    return@Button
+                }
+                if (sanitizedPin != sanitizedConfirm) {
+                    error = "Los PIN ingresados no coinciden."
+                    return@Button
+                }
+                error = null
+                onSave(sanitizedPin)
+            }) {
+                Text("Guardar PIN")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+@Composable
+private fun PinPromptDialog(
+    purpose: PinPromptPurpose,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var localError by remember { mutableStateOf<String?>(null) }
+    val title = when (purpose) {
+        PinPromptPurpose.ENABLE -> "Ingresar PIN"
+        PinPromptPurpose.DISABLE -> "Confirmar desactivación"
+        PinPromptPurpose.OPEN_CATEGORIES -> "Validar PIN"
+    }
+    val description = when (purpose) {
+        PinPromptPurpose.ENABLE -> "Ingresa el PIN para activar el control parental."
+        PinPromptPurpose.DISABLE -> "Ingresa el PIN para desactivar el control parental."
+        PinPromptPurpose.OPEN_CATEGORIES -> "Ingresa el PIN para administrar las categorías ocultas."
+    }
+    val combinedError = error ?: localError
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(description, style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { pin = sanitizePin(it) },
+                    label = { Text("PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+                if (combinedError != null) {
+                    Text(
+                        text = combinedError,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val sanitized = sanitizePin(pin)
+                pin = sanitized
+                if (sanitized.length != 4) {
+                    localError = "Debes ingresar un PIN de 4 dígitos."
+                    return@Button
+                }
+                localError = null
+                onConfirm(sanitized)
+            }) {
+                Text("Confirmar")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun ChangePinDialog(
+    onDismiss: () -> Unit,
+    onSave: suspend (String, String) -> Boolean
+) {
+    var currentPin by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cambiar PIN") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Ingresa tu PIN actual y define uno nuevo.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                OutlinedTextField(
+                    value = currentPin,
+                    onValueChange = { currentPin = sanitizePin(it) },
+                    label = { Text("PIN actual") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = newPin,
+                    onValueChange = { newPin = sanitizePin(it) },
+                    label = { Text("Nuevo PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = confirmPin,
+                    onValueChange = { confirmPin = sanitizePin(it) },
+                    label = { Text("Confirmar nuevo PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+                if (error != null) {
+                    Text(
+                        text = error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val sanitizedCurrent = sanitizePin(currentPin)
+                val sanitizedNew = sanitizePin(newPin)
+                val sanitizedConfirm = sanitizePin(confirmPin)
+                currentPin = sanitizedCurrent
+                newPin = sanitizedNew
+                confirmPin = sanitizedConfirm
+
+                if (sanitizedCurrent.length != 4 || sanitizedNew.length != 4 || sanitizedConfirm.length != 4) {
+                    error = "Debes ingresar un PIN de 4 dígitos."
+                    return@Button
+                }
+                if (sanitizedNew == sanitizedCurrent) {
+                    error = "El nuevo PIN no puede ser igual al actual."
+                    return@Button
+                }
+                if (sanitizedNew != sanitizedConfirm) {
+                    error = "Los PIN ingresados no coinciden."
+                    return@Button
+                }
+
+                scope.launch {
+                    val updated = onSave(sanitizedCurrent, sanitizedNew)
+                    if (!updated) {
+                        error = "PIN incorrecto."
+                    }
+                }
+            }) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun HiddenCategoriesDialog(
+    liveCategories: List<Category>,
+    vodCategories: List<Category>,
+    seriesCategories: List<Category>,
+    initialLive: Set<String>,
+    initialVod: Set<String>,
+    initialSeries: Set<String>,
+    onDismiss: () -> Unit,
+    onSave: (Set<String>, Set<String>, Set<String>) -> Unit
+) {
+    var selectedLive by remember(initialLive) { mutableStateOf(initialLive) }
+    var selectedVod by remember(initialVod) { mutableStateOf(initialVod) }
+    var selectedSeries by remember(initialSeries) { mutableStateOf(initialSeries) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Categorías Ocultas") },
+        text = {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                )
+                    .heightIn(max = 450.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Logout,
-                    contentDescription = "Cerrar sesión"
+                Text(
+                    text = "Marca con el checkbox las categorías que deseas ocultar.",
+                    style = MaterialTheme.typography.bodyMedium
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Cerrar sesión")
+                CategoryCheckboxSection(
+                    title = "Categorías de Canales",
+                    categories = liveCategories,
+                    selected = selectedLive,
+                    onToggle = { id ->
+                        selectedLive = if (selectedLive.contains(id)) selectedLive - id else selectedLive + id
+                    }
+                )
+                CategoryCheckboxSection(
+                    title = "Categorías de Películas",
+                    categories = vodCategories,
+                    selected = selectedVod,
+                    onToggle = { id ->
+                        selectedVod = if (selectedVod.contains(id)) selectedVod - id else selectedVod + id
+                    }
+                )
+                CategoryCheckboxSection(
+                    title = "Categorías de Series",
+                    categories = seriesCategories,
+                    selected = selectedSeries,
+                    onToggle = { id ->
+                        selectedSeries = if (selectedSeries.contains(id)) selectedSeries - id else selectedSeries + id
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(selectedLive, selectedVod, selectedSeries) }) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun CategoryCheckboxSection(
+    title: String,
+    categories: List<Category>,
+    selected: Set<String>,
+    onToggle: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        categories.forEach { category ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Checkbox(
+                    checked = selected.contains(category.categoryId),
+                    onCheckedChange = { onToggle(category.categoryId) }
+                )
+                Text(
+                    text = category.categoryName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }
 }
+
+private fun sanitizePin(input: String): String = input.filter { it.isDigit() }.take(4)

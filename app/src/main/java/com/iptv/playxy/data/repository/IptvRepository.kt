@@ -12,6 +12,11 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.map
+import androidx.paging.filter
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -296,6 +301,22 @@ class IptvRepository @Inject constructor(
 
     suspend fun getParentalPin(): String? = withContext(Dispatchers.IO) { prefs.getParentalPin() }
 
+    suspend fun hasParentalPin(): Boolean = withContext(Dispatchers.IO) {
+        prefs.getParentalPin().isNullOrBlank().not()
+    }
+
+    suspend fun verifyParentalPin(pin: String): Boolean = withContext(Dispatchers.IO) {
+        prefs.getParentalPin() == pin
+    }
+
+    suspend fun setParentalPin(pin: String) = withContext(Dispatchers.IO) {
+        prefs.setParentalPin(pin)
+    }
+
+    suspend fun isCategoryRestricted(type: String, categoryId: String): Boolean = withContext(Dispatchers.IO) {
+        prefs.isParentalControlEnabled() && prefs.getBlockedCategories(type).contains(categoryId)
+    }
+
     suspend fun getBlockedCategories(type: String): Set<String> = withContext(Dispatchers.IO) { prefs.getBlockedCategories(type) }
 
     suspend fun updateBlockedCategories(type: String, ids: Set<String>) = withContext(Dispatchers.IO) {
@@ -441,6 +462,30 @@ class IptvRepository @Inject constructor(
     suspend fun getVodStreamsByCategory(categoryId: String): List<VodStream> {
         return vodStreamDao.getVodStreamsByCategory(categoryId).map { EntityMapper.vodStreamToDomain(it) }
     }
+    
+    fun getPagedVodStreams(
+        categoryId: String?,
+        searchQuery: String?,
+        blockAdult: Boolean,
+        blockedCategories: List<String>,
+        sortOrder: Int,
+        pageSize: Int = 40
+    ): Flow<PagingData<VodStream>> {
+        val allowBlocked = blockedCategories.isEmpty()
+        val flow = Pager(
+            config = PagingConfig(pageSize = pageSize, initialLoadSize = pageSize, enablePlaceholders = false)
+        ) {
+            vodStreamDao.pagingVodStreams(
+                categoryId = categoryId,
+                searchQuery = searchQuery?.ifBlank { null },
+                allowBlocked = allowBlocked,
+                blockedCategories = blockedCategories,
+                blockAdult = blockAdult,
+                sortOrder = sortOrder
+            )
+        }.flow.map { pagingData -> pagingData.map { EntityMapper.vodStreamToDomain(it) } }
+        return if (categoryId == null) flow.distinctVodStreams() else flow
+    }
 
     suspend fun getSeries(): List<Series> {
         return seriesDao.getAllSeries().map { EntityMapper.seriesToDomain(it) }
@@ -448,6 +493,73 @@ class IptvRepository @Inject constructor(
     
     suspend fun getSeriesByCategory(categoryId: String): List<Series> {
         return seriesDao.getSeriesByCategory(categoryId).map { EntityMapper.seriesToDomain(it) }
+    }
+
+    fun getPagedLiveStreams(
+        categoryId: String?,
+        searchQuery: String?,
+        blockAdult: Boolean,
+        blockedCategories: List<String>,
+        sortOrder: Int,
+        pageSize: Int = 50
+    ): Flow<PagingData<LiveStream>> {
+        val allowBlocked = blockedCategories.isEmpty()
+        val flow = Pager(
+            config = PagingConfig(pageSize = pageSize, initialLoadSize = pageSize, enablePlaceholders = false)
+        ) {
+            liveStreamDao.pagingLiveStreams(
+                categoryId = categoryId,
+                searchQuery = searchQuery?.ifBlank { null },
+                allowBlocked = allowBlocked,
+                blockedCategories = blockedCategories,
+                blockAdult = blockAdult,
+                sortOrder = sortOrder
+            )
+        }.flow.map { pagingData -> pagingData.map { EntityMapper.liveStreamToDomain(it) } }
+        return if (categoryId == null) flow.distinctLiveStreams() else flow
+    }
+
+    fun getPagedSeries(
+        categoryId: String?,
+        searchQuery: String?,
+        blockedCategories: List<String>,
+        sortOrder: Int,
+        pageSize: Int = 50
+    ): Flow<PagingData<Series>> {
+        val allowBlocked = blockedCategories.isEmpty()
+        val flow = Pager(
+            config = PagingConfig(pageSize = pageSize, initialLoadSize = pageSize, enablePlaceholders = false)
+        ) {
+            seriesDao.pagingSeries(
+                categoryId = categoryId,
+                searchQuery = searchQuery?.ifBlank { null },
+                allowBlocked = allowBlocked,
+                blockedCategories = blockedCategories,
+                sortOrder = sortOrder
+            )
+        }.flow.map { pagingData -> pagingData.map { EntityMapper.seriesToDomain(it) } }
+        return if (categoryId == null) flow.distinctSeries() else flow
+    }
+
+    private fun Flow<PagingData<LiveStream>>.distinctLiveStreams(): Flow<PagingData<LiveStream>> {
+        return map { paging ->
+            val seen = mutableSetOf<String>()
+            paging.filter { seen.add(it.streamId) }
+        }
+    }
+
+    private fun Flow<PagingData<VodStream>>.distinctVodStreams(): Flow<PagingData<VodStream>> {
+        return map { paging ->
+            val seen = mutableSetOf<String>()
+            paging.filter { seen.add(it.streamId) }
+        }
+    }
+
+    private fun Flow<PagingData<Series>>.distinctSeries(): Flow<PagingData<Series>> {
+        return map { paging ->
+            val seen = mutableSetOf<String>()
+            paging.filter { seen.add(it.seriesId) }
+        }
     }
 
     suspend fun getCategories(type: String): List<Category> {

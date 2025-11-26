@@ -67,7 +67,7 @@ fun PlaybackProgress(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(32.dp)
+                .height(40.dp)
                 .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -123,12 +123,12 @@ fun PlaybackProgress(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(32.dp),
+                    .height(40.dp),
                 thumb = {
                     Box(
                         modifier = Modifier
-                            .size(12.dp)
-                            .offset(y = 2.dp)
+                            .size(18.dp)
+                            .offset(y = 0.dp)
                             .clip(CircleShape)
                             .background(playedColor)
                     )
@@ -136,12 +136,16 @@ fun PlaybackProgress(
             )
         }
 
-        val clampedSpacing = if (bottomSpacing < 0.dp) 0.dp else bottomSpacing
+        val padTop = if (bottomSpacing < 0.dp) 0.dp else bottomSpacing
+        // Mantener los controles pegados al slider (sin offset extra cuando es positivo).
+        val offsetY = if (bottomSpacing < 0.dp) bottomSpacing else 0.dp
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
-                .padding(top = clampedSpacing),
+                .padding(top = padTop)
+                .offset(y = offsetY),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(

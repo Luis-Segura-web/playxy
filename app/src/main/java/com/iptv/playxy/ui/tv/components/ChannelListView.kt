@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,11 +12,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.paging.compose.LazyPagingItems
 import com.iptv.playxy.domain.LiveStream
 
 @Composable
 fun ChannelListView(
-    channels: List<LiveStream>,
+    channels: LazyPagingItems<LiveStream>,
     favoriteChannelIds: Set<String>,
     currentChannelId: String? = null,
     onChannelClick: (LiveStream) -> Unit,
@@ -26,24 +26,18 @@ fun ChannelListView(
 ) {
     val listState = rememberLazyListState()
 
-    // Scroll to current channel when it changes or category changes
-    LaunchedEffect(currentChannelId, channels) {
-        if (currentChannelId != null && channels.isNotEmpty()) {
-            val index = channels.indexOfFirst { it.streamId == currentChannelId }
-            if (index >= 0) {
-                // Canal encontrado en la lista - hacer scroll a él
-                listState.animateScrollToItem(index)
-            } else {
-                // Canal no está en esta categoría - volver al inicio
-                listState.scrollToItem(0)
-            }
-        } else if (channels.isNotEmpty()) {
-            // No hay canal actual - volver al inicio
+    LaunchedEffect(currentChannelId) {
+        val index = currentChannelId?.let { id ->
+            (0 until channels.itemCount).firstOrNull { idx -> channels.peek(idx)?.streamId == id }
+        }
+        if (index != null) {
+            listState.animateScrollToItem(index)
+        } else if (channels.itemCount > 0) {
             listState.scrollToItem(0)
         }
     }
 
-    if (channels.isEmpty()) {
+    if (channels.itemCount == 0) {
         Box(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -59,13 +53,15 @@ fun ChannelListView(
             state = listState,
             modifier = modifier.fillMaxSize()
         ) {
-            items(channels, key = { "${it.streamId}_${it.categoryId}" }) { channel ->
+            items(channels.itemCount) { idx ->
+                val channel = channels[idx] ?: return@items
                 ChannelRow(
                     channel = channel,
                     isFavorite = favoriteChannelIds.contains(channel.streamId),
                     isPlaying = channel.streamId == currentChannelId,
                     onChannelClick = onChannelClick,
-                    onFavoriteClick = onFavoriteClick
+                    onFavoriteClick = onFavoriteClick,
+                    modifier = Modifier.padding(vertical = 2.dp)
                 )
             }
         }

@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward10
@@ -25,11 +27,11 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -187,32 +189,42 @@ private fun FullscreenOverlay(
             }
         }
 
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
             if (state.hasError) {
-                Text(
-                    text = state.errorMessage ?: "Contenido no disponible",
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                FilledTonalButton(onClick = onRetry) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
-                    Text(text = "Reintentar", modifier = Modifier.padding(start = 8.dp))
+                Surface(
+                    color = Color.Red.copy(alpha = 0.85f),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-64).dp)
+                ) {
+                    Text(
+                        text = "Error: ${state.errorMessage ?: "Sin código"}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
                 }
             }
 
             Row(
-                modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
-                    .padding(horizontal = 24.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(28.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.align(Alignment.Center)
             ) {
                 if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onPrevious != null) {
-                    IconButton(onClick = onPrevious, enabled = enablePrevious) {
+                    IconButton(
+                        onClick = onPrevious,
+                        enabled = enablePrevious,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                            .padding(6.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.SkipPrevious,
                             contentDescription = "Anterior",
@@ -221,24 +233,45 @@ private fun FullscreenOverlay(
                     }
                 }
                 if (playerType != PlayerType.TV) {
-                    IconButton(onClick = onSeekBack) {
+                    IconButton(
+                        onClick = onSeekBack,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                            .padding(6.dp)
+                    ) {
                         Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
                     }
                 }
-                IconButton(onClick = onTogglePlay) {
+                IconButton(
+                    onClick = { if (state.hasError) onRetry() else onTogglePlay() },
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        .padding(6.dp)
+                ) {
                     Icon(
-                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pausar" else "Reproducir",
+                        imageVector = if (state.hasError) Icons.Default.Refresh else if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (state.hasError) "Reintentar" else if (state.isPlaying) "Pausar" else "Reproducir",
                         tint = Color.White
                     )
                 }
                 if (playerType != PlayerType.TV) {
-                    IconButton(onClick = onSeekForward) {
+                    IconButton(
+                        onClick = onSeekForward,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                            .padding(6.dp)
+                    ) {
                         Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
                     }
                 }
                 if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onNext != null) {
-                    IconButton(onClick = onNext, enabled = enableNext) {
+                    IconButton(
+                        onClick = onNext,
+                        enabled = enableNext,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                            .padding(6.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "Siguiente",
