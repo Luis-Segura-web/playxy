@@ -58,5 +58,7 @@ data class ActorDetails(
     val birthday: String?,
     val placeOfBirth: String?,
     val availableMovies: List<TmdbMovieLink>,
-    val unavailableMovies: List<TmdbMovieLink>
+    val unavailableMovies: List<TmdbMovieLink>,
+    val availableSeries: List<TmdbSeriesLink> = emptyList(),
+    val unavailableSeries: List<TmdbSeriesLink> = emptyList()
 )

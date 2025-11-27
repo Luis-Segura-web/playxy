@@ -29,7 +29,7 @@ object Routes {
 enum class MainDestination(val title: String) {
     HOME("Inicio"),
     TV("TV"),
-    MOVIES("Pelculas"),
+    MOVIES("Películas"),
     SERIES("Series"),
     SETTINGS("Ajustes")
 }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -57,6 +58,7 @@ class SeriesViewModel @Inject constructor(
             loadRecentIds()
             loadCategories()
         }
+        observeRecentsCleared()
     }
 
     private fun normalizeCategories(list: List<Category>, defaultAllName: String): List<Category> {
@@ -173,6 +175,20 @@ class SeriesViewModel @Inject constructor(
                 }
             }
             _pagingFlow.value = flow
+        }
+    }
+
+    private fun observeRecentsCleared() {
+        viewModelScope.launch {
+            repository.recentsCleared().collect { type ->
+                if (type == "series" || type == "all") {
+                    recentIds.clear()
+                    _uiState.value = _uiState.value.copy(recentIds = emptyList())
+                    if (_uiState.value.selectedCategory.categoryId == "recents") {
+                        refreshPaging()
+                    }
+                }
+            }
         }
     }
 

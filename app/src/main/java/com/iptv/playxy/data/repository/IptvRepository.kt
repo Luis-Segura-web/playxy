@@ -15,6 +15,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,6 +50,7 @@ class IptvRepository @Inject constructor(
     private val recentChannelDao = database.recentChannelDao()
     private val recentVodDao = database.recentVodDao()
     private val recentSeriesDao = database.recentSeriesDao()
+    private val recentsEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
     private val vodInfoCacheMutex = Mutex()
     private val vodInfoCache = mutableMapOf<String, CachedVodInfo>()
     private val seriesInfoCacheMutex = Mutex()
@@ -66,6 +70,8 @@ class IptvRepository @Inject constructor(
     private val vodInfoCacheTtlMs = 4 * 60 * 60 * 1000L // 4 hours
     private val seriesInfoCacheTtlMs = 4 * 60 * 60 * 1000L // 4 horas
     private val actorCacheTtlMs = 4 * 60 * 60 * 1000L // 4 horas
+
+    fun recentsCleared(): SharedFlow<String> = recentsEvents.asSharedFlow()
     
     // User Profile operations
     suspend fun getProfile(): UserProfile? {
@@ -302,13 +308,26 @@ class IptvRepository @Inject constructor(
         recentSeriesDao.trim(limit)
     }
 
-    suspend fun clearRecentChannels() = withContext(Dispatchers.IO) { recentChannelDao.deleteAll() }
-    suspend fun clearRecentVod() = withContext(Dispatchers.IO) { recentVodDao.deleteAll() }
-    suspend fun clearRecentSeries() = withContext(Dispatchers.IO) { recentSeriesDao.deleteAll() }
+    suspend fun clearRecentChannels() = withContext(Dispatchers.IO) {
+        recentChannelDao.deleteAll()
+        recentsEvents.tryEmit("live")
+    }
+
+    suspend fun clearRecentVod() = withContext(Dispatchers.IO) {
+        recentVodDao.deleteAll()
+        recentsEvents.tryEmit("vod")
+    }
+
+    suspend fun clearRecentSeries() = withContext(Dispatchers.IO) {
+        recentSeriesDao.deleteAll()
+        recentsEvents.tryEmit("series")
+    }
+
     suspend fun clearAllRecents() = withContext(Dispatchers.IO) {
         recentChannelDao.deleteAll()
         recentVodDao.deleteAll()
         recentSeriesDao.deleteAll()
+        recentsEvents.tryEmit("all")
     }
 
     suspend fun isTmdbEnabled(): Boolean = withContext(Dispatchers.IO) { prefs.isTmdbEnabled() }
@@ -684,16 +703,16 @@ class IptvRepository @Inject constructor(
             if (response.isSuccessful) {
                 val body = response.body() ?: return null
                 val profile = cast.profile ?: tmdbProfileUrl(body.profilePath)
-                val movies = body.combinedCredits?.cast.orEmpty()
+                val credits = body.combinedCredits?.cast.orEmpty()
                 val allStreams = vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
                 val streamsByTmdb = allStreams.groupBy { it.tmdbId }
+                val allSeries = seriesDao.getAllSeries().map { EntityMapper.seriesToDomain(it) }
+                val seriesByTmdb = allSeries.groupBy { it.tmdbId }
 
-                fun releaseDateKey(date: String?): Long =
-                    date?.let { runCatching { LocalDate.parse(it).toEpochDay() }.getOrNull() } ?: Long.MAX_VALUE
-
-                fun mapLinks(includeUnavailable: Boolean): List<com.iptv.playxy.domain.TmdbMovieLink> {
+                fun mapMovieLinks(includeUnavailable: Boolean): List<com.iptv.playxy.domain.TmdbMovieLink> {
                     val list = mutableListOf<com.iptv.playxy.domain.TmdbMovieLink>()
-                    movies.forEach { result ->
+                    credits.forEach { result ->
+                        if (result.mediaType != null && result.mediaType != "movie") return@forEach
                         val id = result.id ?: return@forEach
                         val tmdbTitle = result.title ?: result.name ?: return@forEach
                         val poster = tmdbPosterUrl(result.posterPath)
@@ -734,14 +753,65 @@ class IptvRepository @Inject constructor(
                                     rating = rating
                                 )
                             }
+                        }
+                    }
+                    return list.distinctBy { it.availableStreamId ?: "tmdb-${it.tmdbId}" }
                 }
-            }
-            return list
-                .distinctBy { it.availableStreamId ?: "tmdb-${it.tmdbId}" }
-        }
 
-                val available = mapLinks(includeUnavailable = false)
-                val unavailable = mapLinks(includeUnavailable = true).filter { it.availableStreamId == null }
+                fun mapSeriesLinks(includeUnavailable: Boolean): List<com.iptv.playxy.domain.TmdbSeriesLink> {
+                    val list = mutableListOf<com.iptv.playxy.domain.TmdbSeriesLink>()
+                    credits.forEach { result ->
+                        val media = result.mediaType
+                        if (media != null && media != "tv") return@forEach
+                        val id = result.id ?: return@forEach
+                        val tmdbTitle = result.name ?: result.title ?: return@forEach
+                        val poster = tmdbPosterUrl(result.posterPath)
+                        val matches = seriesByTmdb[id.toString()].orEmpty()
+                        val airDate = result.firstAirDate
+                        val overview = result.overview
+                        val backdrop = tmdbBackdropUrl(result.backdropPath)
+                        val rating = result.voteAverage
+                        if (matches.isEmpty()) {
+                            if (includeUnavailable) {
+                                list += com.iptv.playxy.domain.TmdbSeriesLink(
+                                    tmdbId = id,
+                                    title = tmdbTitle,
+                                    poster = poster,
+                                    availableSeriesId = null,
+                                    availableCategoryId = null,
+                                    tmdbTitle = tmdbTitle,
+                                    character = result.character,
+                                    firstAirDate = airDate,
+                                    overview = overview,
+                                    backdrop = backdrop,
+                                    rating = rating
+                                )
+                            }
+                        } else {
+                            matches.forEach { series ->
+                                list += com.iptv.playxy.domain.TmdbSeriesLink(
+                                    tmdbId = id,
+                                    title = series.name,
+                                    poster = series.cover ?: poster,
+                                    availableSeriesId = series.seriesId,
+                                    availableCategoryId = series.categoryId,
+                                    tmdbTitle = tmdbTitle,
+                                    character = result.character,
+                                    firstAirDate = airDate,
+                                    overview = overview,
+                                    backdrop = backdrop,
+                                    rating = rating
+                                )
+                            }
+                        }
+                    }
+                    return list.distinctBy { it.availableSeriesId ?: "tmdb-${it.tmdbId}" }
+                }
+
+                val availableMovies = mapMovieLinks(includeUnavailable = false)
+                val unavailableMovies = mapMovieLinks(includeUnavailable = true).filter { it.availableStreamId == null }
+                val availableSeries = mapSeriesLinks(includeUnavailable = false)
+                val unavailableSeries = mapSeriesLinks(includeUnavailable = true).filter { it.availableSeriesId == null }
 
                 com.iptv.playxy.domain.ActorDetails(
                     name = cast.name,
@@ -749,8 +819,10 @@ class IptvRepository @Inject constructor(
                     biography = body.biography,
                     birthday = body.birthday,
                     placeOfBirth = body.placeOfBirth,
-                    availableMovies = available,
-                    unavailableMovies = unavailable
+                    availableMovies = availableMovies,
+                    unavailableMovies = unavailableMovies,
+                    availableSeries = availableSeries,
+                    unavailableSeries = unavailableSeries
                 ).also { cacheActor(castId, it) }
             } else null
         } catch (e: Exception) {
@@ -938,7 +1010,7 @@ class IptvRepository @Inject constructor(
         )
     }
 
-    private fun mergeSeriesInfoWithTmdb(seriesInfo: SeriesInfo, tmdb: TmdbSeriesResponse): SeriesInfo {
+    private suspend fun mergeSeriesInfoWithTmdb(seriesInfo: SeriesInfo, tmdb: TmdbSeriesResponse): SeriesInfo {
         val provider = seriesInfo.info
         val backdropsFromImages = tmdb.images?.backdrops?.mapNotNull { it.filePath }.orEmpty()
         val backdropList = when {
@@ -965,6 +1037,94 @@ class IptvRepository @Inject constructor(
         val rating5Based = provider.rating5Based.takeIf { it > 0 } ?: tmdb.voteAverage?.div(2.0)?.toFloat()
         val rating = provider.rating.takeIf { it > 0f } ?: tmdb.voteAverage?.toFloat()
 
+        val castList = tmdb.credits?.cast
+            ?.sortedBy { it.order ?: Int.MAX_VALUE }
+            ?.take(15)
+            ?.mapNotNull {
+                val name = it.name ?: return@mapNotNull null
+                com.iptv.playxy.domain.TmdbCast(
+                    id = it.id,
+                    name = name,
+                    character = it.character,
+                    profile = tmdbProfileUrl(it.profilePath)
+                )
+            }
+            ?: emptyList()
+
+        val allSeries = seriesDao.getAllSeries().map { EntityMapper.seriesToDomain(it) }
+        val seriesByTmdb = allSeries.groupBy { it.tmdbId }
+
+        fun mapSeriesLinks(
+            results: List<com.iptv.playxy.data.api.TmdbSeriesResult>?,
+            includeUnavailable: Boolean
+        ): List<com.iptv.playxy.domain.TmdbSeriesLink> {
+            val links = mutableListOf<com.iptv.playxy.domain.TmdbSeriesLink>()
+            results.orEmpty().forEach { result ->
+                val id = result.id ?: return@forEach
+                val tmdbTitle = result.name ?: return@forEach
+                val poster = tmdbPosterUrl(result.posterPath)
+                val matches = seriesByTmdb[id.toString()].orEmpty()
+                val airDate = result.firstAirDate
+                val overview = result.overview
+                val backdrop = tmdbBackdropUrl(result.backdropPath)
+                val rating = result.voteAverage
+                if (matches.isEmpty()) {
+                    if (includeUnavailable) {
+                        links += com.iptv.playxy.domain.TmdbSeriesLink(
+                            tmdbId = id,
+                            title = tmdbTitle,
+                            poster = poster,
+                            availableSeriesId = null,
+                            availableCategoryId = null,
+                            tmdbTitle = tmdbTitle,
+                            character = result.character,
+                            firstAirDate = airDate,
+                            overview = overview,
+                            backdrop = backdrop,
+                            rating = rating
+                        )
+                    }
+                } else {
+                    matches.forEach { series ->
+                        links += com.iptv.playxy.domain.TmdbSeriesLink(
+                            tmdbId = id,
+                            title = series.name,
+                            poster = series.cover ?: poster,
+                            availableSeriesId = series.seriesId,
+                            availableCategoryId = series.categoryId,
+                            tmdbTitle = tmdbTitle,
+                            character = result.character,
+                            firstAirDate = airDate,
+                            overview = overview,
+                            backdrop = backdrop,
+                            rating = rating
+                        )
+                    }
+                }
+            }
+            return links.distinctBy { it.availableSeriesId ?: "tmdb-${it.tmdbId}" }
+        }
+
+        val similarLinks = mapSeriesLinks(tmdb.similar?.results, includeUnavailable = false) +
+            mapSeriesLinks(tmdb.recommendations?.results, includeUnavailable = false)
+
+        val collectionLinks = provider.tmdbId?.let { id ->
+            seriesByTmdb[id]?.map { series ->
+                com.iptv.playxy.domain.TmdbSeriesLink(
+                    tmdbId = id.toIntOrNull() ?: tmdb.id ?: -1,
+                    title = series.name,
+                    poster = series.cover ?: tmdbPosterUrl(tmdb.posterPath),
+                    availableSeriesId = series.seriesId,
+                    availableCategoryId = series.categoryId,
+                    tmdbTitle = tmdb.name ?: provider.name,
+                    firstAirDate = series.releaseDate ?: tmdb.firstAirDate,
+                    overview = series.plot ?: tmdb.overview,
+                    backdrop = series.backdropPath.firstOrNull() ?: tmdbBackdropUrl(tmdb.backdropPath),
+                    rating = tmdb.voteAverage
+                )
+            }
+        }.orEmpty()
+
         val mergedSeries = provider.copy(
             name = provider.name.ifBlank { tmdb.name.orEmpty() },
             plot = provider.plot ?: tmdb.overview,
@@ -982,7 +1142,12 @@ class IptvRepository @Inject constructor(
             lastModified = provider.lastModified
         )
 
-        return seriesInfo.copy(info = mergedSeries)
+        return seriesInfo.copy(
+            info = mergedSeries,
+            tmdbCast = castList,
+            tmdbSimilar = similarLinks.filter { it.availableSeriesId != null },
+            tmdbCollection = collectionLinks.distinctBy { it.availableSeriesId ?: "tmdb-${it.tmdbId}" }
+        )
     }
 
     suspend fun getCategories(type: String): List<Category> {

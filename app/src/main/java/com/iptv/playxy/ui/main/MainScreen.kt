@@ -1,6 +1,7 @@
 package com.iptv.playxy.ui.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,10 +11,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -63,11 +67,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.iptv.playxy.domain.Category
 import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPipController
@@ -430,7 +438,12 @@ fun MainScreen(
                 )
         ) {
             when (state.currentDestination) {
-                MainDestination.HOME -> HomeContent(state)
+                MainDestination.HOME -> HomeContent(
+                    state = state,
+                    viewModel = viewModel,
+                    onNavigateToMovie = onNavigateToMovieDetail,
+                    onNavigateToSeries = onNavigateToSeriesDetail
+                )
                 MainDestination.TV -> TVScreen(
                     searchQuery = state.debouncedSearchQuery,
                     sortOrder = state.sortOrder
@@ -508,133 +521,133 @@ fun MainScreen(
 }
 
 @Composable
-fun HomeContent(state: MainState) {
+fun HomeContent(
+    state: MainState,
+    viewModel: MainViewModel,
+    onNavigateToMovie: (String, String) -> Unit,
+    onNavigateToSeries: (String, String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var highlights by remember { mutableStateOf<HomeHighlights?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            highlights = viewModel.fetchHomeHighlights()
+            isLoading = false
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Panel de inicio",
+            text = "Inicio",
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
-            tonalElevation = 3.dp,
-            shadowElevation = 0.dp,
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Reproduce y navega sin ruido",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "TV en vivo, películas y series en un tablero limpio.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.PlayCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(40.dp)
-                )
+                CircularProgressIndicator()
             }
+            return@Column
         }
 
-        StatsCard(
-            title = "Canales de TV",
-            count = state.liveStreamCount,
-            icon = Icons.Default.Tv
-        )
-        
-        StatsCard(
-            title = "Películas",
-            count = state.vodStreamCount,
-            icon = Icons.Default.Movie
-        )
-        
-        StatsCard(
-            title = "Series",
-            count = state.seriesCount,
-            icon = Icons.Default.VideoLibrary
-        )
-    }
-}
-
-@Composable
-fun StatsCard(
-    title: String,
-    count: Int,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 4.dp,
-        shadowElevation = 0.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surface,
-                            shape = MaterialTheme.shapes.large
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = title,
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+        highlights?.let { data ->
+            HighlightCarousel(
+                title = "Películas destacadas",
+                items = data.movies,
+                onClick = { link ->
+                    val streamId = link.availableStreamId
+                    val categoryId = link.availableCategoryId
+                    if (streamId != null && categoryId != null) {
+                        onNavigateToMovie(streamId, categoryId)
+                    }
                 }
-                Icon(
-                    imageVector = Icons.Default.FiberManualRecord,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(10.dp)
-                )
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge
-                )
-            }
-            Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
+            )
+
+            HighlightCarousel(
+                title = "Series destacadas",
+                items = data.series,
+                onClick = { link ->
+                    val seriesId = link.availableSeriesId
+                    val categoryId = link.availableCategoryId
+                    if (seriesId != null && categoryId != null) {
+                        onNavigateToSeries(seriesId, categoryId)
+                    }
+                }
             )
         }
     }
 }
+
+@Composable
+private fun HighlightCarousel(
+    title: String,
+    items: List<HomeLink>,
+    onClick: (HomeLink) -> Unit
+) {
+    if (items.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items) { item ->
+                Surface(
+                    modifier = Modifier
+                        .width(160.dp)
+                        .clickable { onClick(item) },
+                    shape = MaterialTheme.shapes.medium,
+                    tonalElevation = 4.dp
+                ) {
+                    Column {
+                        AsyncImage(
+                            model = item.poster,
+                            contentDescription = item.title,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp),
+                            contentScale = ContentScale.Crop
+                        )
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            item.year?.let {
+                                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class HomeHighlights(
+    val movies: List<HomeLink>,
+    val series: List<HomeLink>
+)
+
+data class HomeLink(
+    val title: String,
+    val poster: String?,
+    val year: String?,
+    val availableStreamId: String? = null,
+    val availableSeriesId: String? = null,
+    val availableCategoryId: String? = null
+)
 
 @Composable
 fun UnderConstructionContent(section: String) {
@@ -1063,20 +1076,19 @@ fun SettingsContent(
     }
 
     if (showHiddenCategories) {
-        HiddenCategoriesDialog(
+        com.iptv.playxy.ui.settings.HiddenCategoriesScreen(
             liveCategories = uiState.liveCategories,
             vodCategories = uiState.vodCategories,
             seriesCategories = uiState.seriesCategories,
             initialLive = uiState.blockedLive,
             initialVod = uiState.blockedVod,
             initialSeries = uiState.blockedSeries,
-            onDismiss = {
-                showHiddenCategories = false
-            },
+            onDismiss = { showHiddenCategories = false },
             onSave = { live, vod, series ->
                 coroutineScope.launch {
                     viewModel.saveBlockedCategories(live, vod, series)
                     showHiddenCategories = false
+                    snackbarHostState.showSnackbar("Categorías ocultas actualizadas.")
                 }
             }
         )
@@ -1307,100 +1319,6 @@ private fun ChangePinDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
-}
-
-@Composable
-private fun HiddenCategoriesDialog(
-    liveCategories: List<Category>,
-    vodCategories: List<Category>,
-    seriesCategories: List<Category>,
-    initialLive: Set<String>,
-    initialVod: Set<String>,
-    initialSeries: Set<String>,
-    onDismiss: () -> Unit,
-    onSave: (Set<String>, Set<String>, Set<String>) -> Unit
-) {
-    var selectedLive by remember(initialLive) { mutableStateOf(initialLive) }
-    var selectedVod by remember(initialVod) { mutableStateOf(initialVod) }
-    var selectedSeries by remember(initialSeries) { mutableStateOf(initialSeries) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Categorías Ocultas") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 450.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Marca con el checkbox las categorías que deseas ocultar.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                CategoryCheckboxSection(
-                    title = "Categorías de Canales",
-                    categories = liveCategories,
-                    selected = selectedLive,
-                    onToggle = { id ->
-                        selectedLive = if (selectedLive.contains(id)) selectedLive - id else selectedLive + id
-                    }
-                )
-                CategoryCheckboxSection(
-                    title = "Categorías de Películas",
-                    categories = vodCategories,
-                    selected = selectedVod,
-                    onToggle = { id ->
-                        selectedVod = if (selectedVod.contains(id)) selectedVod - id else selectedVod + id
-                    }
-                )
-                CategoryCheckboxSection(
-                    title = "Categorías de Series",
-                    categories = seriesCategories,
-                    selected = selectedSeries,
-                    onToggle = { id ->
-                        selectedSeries = if (selectedSeries.contains(id)) selectedSeries - id else selectedSeries + id
-                    }
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onSave(selectedLive, selectedVod, selectedSeries) }) {
-                Text("Guardar")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
-    )
-}
-
-@Composable
-private fun CategoryCheckboxSection(
-    title: String,
-    categories: List<Category>,
-    selected: Set<String>,
-    onToggle: (String) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
-        categories.forEach { category ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Checkbox(
-                    checked = selected.contains(category.categoryId),
-                    onCheckedChange = { onToggle(category.categoryId) }
-                )
-                Text(
-                    text = category.categoryName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-    }
 }
 
 private fun sanitizePin(input: String): String = input.filter { it.isDigit() }.take(4)

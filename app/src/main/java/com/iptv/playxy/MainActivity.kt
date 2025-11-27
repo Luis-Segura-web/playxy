@@ -226,6 +226,9 @@ fun PlayxyNavigation(repository: IptvRepository) {
                 },
                 onNavigateToMovie = { toStreamId, toCategoryId ->
                     navController.navigate(Routes.movieDetail(toStreamId, toCategoryId, true))
+                },
+                onNavigateToSeries = { toSeriesId, toCategoryId ->
+                    navController.navigate(Routes.seriesDetail(toSeriesId, toCategoryId))
                 }
             )
         }
@@ -243,7 +246,13 @@ fun PlayxyNavigation(repository: IptvRepository) {
             SeriesDetailScreen(
                 seriesId = seriesId,
                 categoryId = categoryId,
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { navController.popBackStack() },
+                onNavigateToSeries = { toSeriesId, toCategoryId ->
+                    navController.navigate(Routes.seriesDetail(toSeriesId, toCategoryId))
+                },
+                onNavigateToActor = { cast ->
+                    navController.navigate(Routes.actorDetail(cast))
+                }
             )
         }
     }

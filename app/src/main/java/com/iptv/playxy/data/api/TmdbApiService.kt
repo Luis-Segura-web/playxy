@@ -17,7 +17,7 @@ interface TmdbApiService {
     @GET("tv/{id}")
     suspend fun getSeries(
         @Path("id") id: String,
-        @Query("append_to_response") appendToResponse: String = "images,credits,videos",
+        @Query("append_to_response") appendToResponse: String = "images,credits,videos,similar,recommendations",
         @Query("language") language: String = "es-ES",
         @Query("include_image_language") includeImageLanguage: String = "es,en,null"
     ): Response<TmdbSeriesResponse>

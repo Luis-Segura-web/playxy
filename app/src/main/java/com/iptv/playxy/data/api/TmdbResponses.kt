@@ -39,7 +39,9 @@ data class TmdbSeriesResponse(
     @field:Json(name = "genres") val genres: List<TmdbGenre>?,
     @field:Json(name = "videos") val videos: TmdbVideosResponse?,
     @field:Json(name = "images") val images: TmdbImagesResponse?,
-    @field:Json(name = "credits") val credits: TmdbCreditsResponse?
+    @field:Json(name = "credits") val credits: TmdbCreditsResponse?,
+    @field:Json(name = "similar") val similar: TmdbPagedSeries?,
+    @field:Json(name = "recommendations") val recommendations: TmdbPagedSeries?
 )
 
 @JsonClass(generateAdapter = true)
@@ -114,11 +116,31 @@ data class TmdbPagedMovies(
 )
 
 @JsonClass(generateAdapter = true)
+data class TmdbPagedSeries(
+    @field:Json(name = "results") val results: List<TmdbSeriesResult>?
+)
+
+@JsonClass(generateAdapter = true)
+data class TmdbSeriesResult(
+    @field:Json(name = "id") val id: Int?,
+    @field:Json(name = "name") val name: String?,
+    @field:Json(name = "poster_path") val posterPath: String?,
+    @field:Json(name = "first_air_date") val firstAirDate: String?,
+    @field:Json(name = "overview") val overview: String?,
+    @field:Json(name = "backdrop_path") val backdropPath: String?,
+    @field:Json(name = "vote_average") val voteAverage: Double?,
+    @field:Json(name = "media_type") val mediaType: String? = null,
+    @field:Json(name = "character") val character: String? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class TmdbMovieResult(
     @field:Json(name = "id") val id: Int?,
     @field:Json(name = "title") val title: String?,
     @field:Json(name = "name") val name: String?,
     @field:Json(name = "poster_path") val posterPath: String?,
+    @field:Json(name = "media_type") val mediaType: String? = null,
+    @field:Json(name = "first_air_date") val firstAirDate: String? = null,
     @field:Json(name = "character") val character: String? = null,
     @field:Json(name = "release_date") val releaseDate: String?,
     @field:Json(name = "overview") val overview: String?,

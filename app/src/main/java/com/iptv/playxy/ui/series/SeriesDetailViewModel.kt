@@ -9,6 +9,8 @@ import com.iptv.playxy.data.db.SeriesProgressEntity
 import com.iptv.playxy.data.repository.IptvRepository
 import com.iptv.playxy.domain.Episode
 import com.iptv.playxy.domain.Series
+import com.iptv.playxy.domain.TmdbCast
+import com.iptv.playxy.domain.TmdbSeriesLink
 import com.iptv.playxy.domain.UserProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +26,11 @@ data class SeriesDetailUiState(
     val error: String? = null,
     val lastEpisode: Episode? = null, // Último episodio visto
     val episodeProgress: Map<String, EpisodeProgressEntity> = emptyMap(), // Progreso de cada episodio
-    val currentPlayingEpisodeId: String? = null // ID del episodio actual en reproducción
+    val currentPlayingEpisodeId: String? = null, // ID del episodio actual en reproducción
+    val tmdbCast: List<TmdbCast> = emptyList(),
+    val tmdbSimilar: List<TmdbSeriesLink> = emptyList(),
+    val tmdbCollection: List<TmdbSeriesLink> = emptyList(),
+    val tmdbEnabled: Boolean = false
 )
 
 @HiltViewModel
@@ -42,6 +48,7 @@ class SeriesDetailViewModel @Inject constructor(
 
     init {
         loadUserProfile()
+        refreshTmdbEnabled()
     }
 
     private fun loadUserProfile() {
@@ -85,6 +92,9 @@ class SeriesDetailViewModel @Inject constructor(
                         lastEpisode = lastEpisode,
                         currentPlayingEpisodeId = lastEpisode?.id,
                         episodeProgress = episodeProgressMap,
+                        tmdbCast = seriesInfo.tmdbCast,
+                        tmdbSimilar = seriesInfo.tmdbSimilar,
+                        tmdbCollection = seriesInfo.tmdbCollection,
                         isLoading = false
                     )
                 } else {
@@ -179,5 +189,10 @@ class SeriesDetailViewModel @Inject constructor(
     fun setCurrentPlayingEpisode(episodeId: String?) {
         _uiState.value = _uiState.value.copy(currentPlayingEpisodeId = episodeId)
     }
+    
+    private fun refreshTmdbEnabled() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(tmdbEnabled = repository.isTmdbEnabled())
+        }
+    }
 }
-

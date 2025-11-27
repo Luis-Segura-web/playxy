@@ -730,7 +730,7 @@ fun MovieDetailScreen(
 
                     if (tmdbEnabled && !movieInfo?.tmdbSimilar.isNullOrEmpty()) {
                         Text(
-                            text = "Contenido similar",
+                            text = "Películas similares",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.Bold

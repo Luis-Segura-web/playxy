@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -70,6 +71,7 @@ class MoviesViewModel @Inject constructor(
         loadUserProfile()
         loadInitialData()
         refreshTmdbEnabled()
+        observeRecentsCleared()
     }
 
     private fun loadInitialData() {
@@ -212,6 +214,20 @@ class MoviesViewModel @Inject constructor(
 
     private fun refreshPaging() {
         viewModelScope.launch { buildPagingData() }
+    }
+
+    private fun observeRecentsCleared() {
+        viewModelScope.launch {
+            repository.recentsCleared().collect { type ->
+                if (type == "vod" || type == "all") {
+                    recentIds.clear()
+                    _uiState.value = _uiState.value.copy(recentIds = emptyList())
+                    if (_uiState.value.selectedCategory.categoryId == "recents") {
+                        refreshPaging()
+                    }
+                }
+            }
+        }
     }
 
     private fun registerRecent(streamId: String) {

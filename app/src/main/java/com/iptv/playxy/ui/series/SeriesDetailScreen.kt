@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -50,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -75,7 +79,9 @@ fun SeriesDetailScreen(
     seriesId: String,
     categoryId: String,
     viewModel: SeriesDetailViewModel = hiltViewModel(),
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onNavigateToSeries: (String, String) -> Unit = { _, _ -> },
+    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
@@ -401,6 +407,7 @@ fun SeriesDetailScreen(
         val seasonNumbers = uiState.seasons.keys.sorted()
         var selectedSeason by remember { mutableIntStateOf(seasonNumbers.firstOrNull() ?: 1) }
         var synopsisExpanded by remember { mutableStateOf(false) }
+        var unavailableSeriesInfo by remember { mutableStateOf<com.iptv.playxy.domain.TmdbSeriesLink?>(null) }
 
         LaunchedEffect(uiState.seasons) {
             if (seasonNumbers.isNotEmpty()) {
@@ -532,244 +539,87 @@ fun SeriesDetailScreen(
                     }
                 } else if (uiState.series != null) {
                     val series = uiState.series!!
+                    var selectedTab by remember { mutableIntStateOf(0) }
+                    val primaryEpisode = currentEpisode
+                        ?: run {
+                            if (uiState.currentPlayingEpisodeId != null) {
+                                allEpisodes.find { it.id == uiState.currentPlayingEpisodeId }
+                            } else {
+                                uiState.lastEpisode
+                            }
+                        }
+                        ?: uiState.seasons[selectedSeason]?.firstOrNull()
+
+                    val episodeHasProgress = primaryEpisode?.let { ep ->
+                        val savedProgress = uiState.episodeProgress[ep.id]
+                        val isCurrentlyPlaying = uiState.currentPlayingEpisodeId == ep.id
+                        (savedProgress != null && savedProgress.positionMs > 0) || (isCurrentlyPlaying && currentPlaybackPosition > 0)
+                    } ?: false
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .verticalScroll(rememberScrollState())
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Title and Heart Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                val initialFontSize = MaterialTheme.typography.headlineMedium.fontSize
-                                var fontSize by remember { mutableStateOf(initialFontSize) }
-                                var reductionCount by remember { mutableIntStateOf(0) }
-                                
-                                Text(
-                                    text = displayTitle.ifBlank { series.name },
-                                    fontSize = fontSize,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onTextLayout = { textLayoutResult ->
-                                        if (textLayoutResult.hasVisualOverflow && reductionCount < 5) {
-                                            reductionCount++
-                                            fontSize = fontSize * 0.9f
-                                        }
-                                    }
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    // Stars
-                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        repeat(5) { index ->
-                                            val filled = ratingValue >= index + 1
-                                            Icon(
-                                                imageVector = Icons.Default.Star,
-                                                contentDescription = null,
-                                                tint = if (filled) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = "${seasonNumbers.size} Temporadas",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    // Date Chip
-                                    if (!series.releaseDate.isNullOrEmpty()) {
-                                        Surface(
-                                            color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
-                                            Text(
-                                                text = series.releaseDate,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onPrimary,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Heart Icon
-                            val isFavorite = seriesListUi.favoriteIds.contains(series.seriesId)
-                            IconButton(
-                                onClick = {
-                                    seriesVm.toggleFavorite(series.seriesId)
-                                    val msg = if (isFavorite) "Quitado de favoritos" else "Añadido a favoritos"
-                                    snackbarScope.launch { snackbarHostState.showSnackbar(msg) }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                    contentDescription = null,
-                                    tint = if (isFavorite) Color(0xFFFF0000) else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
+                        TabRow(selectedTabIndex = selectedTab) {
+                            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Info") })
+                            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Episodios") })
                         }
-
-                        // Resume Button
-                        val primaryEpisode = currentEpisode
-                            ?: run {
-                                // Si no hay episodio reproduciéndose, buscar por currentPlayingEpisodeId
-                                if (uiState.currentPlayingEpisodeId != null) {
-                                    allEpisodes.find { it.id == uiState.currentPlayingEpisodeId }
-                                } else {
-                                    uiState.lastEpisode
-                                }
-                            }
-                            ?: uiState.seasons[selectedSeason]?.firstOrNull()
-                        
-                        val episodeHasProgress = primaryEpisode?.let { ep ->
-                            val savedProgress = uiState.episodeProgress[ep.id]
-                            val isCurrentlyPlaying = uiState.currentPlayingEpisodeId == ep.id
-                            (savedProgress != null && savedProgress.positionMs > 0) || (isCurrentlyPlaying && currentPlaybackPosition > 0)
-                        } ?: false
-
-                        Button(
-                            onClick = { 
-                                primaryEpisode?.let { ep ->
-                                    // Si hay progreso, cargar la posición guardada o actual
-                                    if (episodeHasProgress) {
-                                        val savedProgress = uiState.episodeProgress[ep.id]
-                                        val isCurrentlyPlaying = uiState.currentPlayingEpisodeId == ep.id
-                                        lastPositionMs = if (isCurrentlyPlaying && currentPlaybackPosition > 0) {
-                                            currentPlaybackPosition
-                                        } else {
-                                            savedProgress?.positionMs ?: 0L
-                                        }
-                                    }
-                                    playEpisode(ep)
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = if (episodeHasProgress) "Reanudar" else "Ver ahora",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                if (primaryEpisode != null) {
-                                    Text(
-                                        text = displayEpisodeTitle(primaryEpisode, uiState.series?.name),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                    )
-                                }
-                        }
-                        }
-
-                        // Synopsis
-                        SynopsisBlock(
-                            synopsis = series.plot,
-                            expanded = synopsisExpanded,
-                            onToggle = { synopsisExpanded = !synopsisExpanded }
-                        )
-
-                        // Meta
-                        Text(
-                            text = "Género: ${series.genre ?: "—"}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Dirigido por: ${series.director ?: "—"}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        // Season Header Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Season Selector
-                            var seasonMenuExpanded by remember { mutableStateOf(false) }
-                            Box {
-                                Row(
-                                    modifier = Modifier.clickable { seasonMenuExpanded = true },
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Temporada $selectedSeason",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onBackground
-                                    )
-                                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MaterialTheme.colorScheme.onBackground)
-                                }
-                                DropdownMenu(
-                                    expanded = seasonMenuExpanded,
-                                    onDismissRequest = { seasonMenuExpanded = false }
-                                ) {
-                                    seasonNumbers.forEach { seasonNum ->
-                                        DropdownMenuItem(
-                                            text = { Text("Temporada $seasonNum") },
-                                            onClick = {
-                                                selectedSeason = seasonNum
-                                                expandedSeason = seasonNum
-                                                seasonMenuExpanded = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                            
-                            // Episode Count
-                            val episodes = uiState.seasons[selectedSeason] ?: emptyList()
-                            Text(
-                                text = "Episodios (${episodes.size})",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        when (selectedTab) {
+                            0 -> InfoTabContent(
+                                series = series,
+                                ratingValue = ratingValue,
+                                seasonCount = seasonNumbers.size,
+                                synopsisExpanded = synopsisExpanded,
+                                onToggleSynopsis = { synopsisExpanded = !synopsisExpanded },
+                                tmdbEnabled = uiState.tmdbEnabled,
+                                tmdbCast = uiState.tmdbCast,
+                                tmdbSimilar = uiState.tmdbSimilar,
+                                tmdbCollection = uiState.tmdbCollection,
+                                onNavigateToActor = onNavigateToActor,
+                                onNavigateToSeries = onNavigateToSeries,
+                                onUnavailable = { unavailableSeriesInfo = it }
                             )
-                        }
-
-                        // Episode List
-                        val episodes = uiState.seasons[selectedSeason] ?: emptyList()
-                        episodes.forEach { ep ->
-                            EpisodeCard(
-                                episode = ep,
-                                seriesName = uiState.series?.name,
-                                episodeProgress = uiState.episodeProgress[ep.id],
-                                isCurrentlyPlaying = uiState.currentPlayingEpisodeId == ep.id,
-                                currentPlaybackPosition = if (uiState.currentPlayingEpisodeId == ep.id) currentPlaybackPosition else 0L,
-                                currentPlaybackDuration = if (uiState.currentPlayingEpisodeId == ep.id) currentPlaybackDuration else 0L,
-                                onPlay = {
-                                    val series = uiState.series
-                                    if (series != null) {
-                                        seriesVm.onSeriesOpened(series.seriesId)
+                            1 -> EpisodesTabContent(
+                                series = series,
+                                seasonNumbers = seasonNumbers,
+                                selectedSeasonState = { selectedSeason },
+                                onSeasonSelected = { selectedSeason = it; expandedSeason = it },
+                                episodesBySeason = uiState.seasons,
+                                resumeEpisode = primaryEpisode,
+                                episodeHasProgress = episodeHasProgress,
+                                onPlayResume = {
+                                    primaryEpisode?.let { ep ->
+                                        if (episodeHasProgress) {
+                                            val savedProgress = uiState.episodeProgress[ep.id]
+                                            val isCurrentlyPlaying = uiState.currentPlayingEpisodeId == ep.id
+                                            lastPositionMs = if (isCurrentlyPlaying && currentPlaybackPosition > 0) {
+                                                currentPlaybackPosition
+                                            } else {
+                                                savedProgress?.positionMs ?: 0L
+                                            }
+                                        }
+                                        playEpisode(ep)
+                                    }
+                                },
+                                episodeProgress = uiState.episodeProgress,
+                                currentPlayingEpisodeId = uiState.currentPlayingEpisodeId,
+                                currentPlaybackPosition = currentPlaybackPosition,
+                                currentPlaybackDuration = currentPlaybackDuration,
+                                onPlayEpisode = { ep ->
+                                    val seriesDomain = uiState.series
+                                    if (seriesDomain != null) {
+                                        seriesVm.onSeriesOpened(seriesDomain.seriesId)
                                     }
                                     viewModel.setCurrentPlayingEpisode(ep.id)
                                     playEpisode(ep)
                                 }
                             )
                         }
+                    }
+                    unavailableSeriesInfo?.let { info ->
+                        UnavailableSeriesDialog(item = info, onDismiss = { unavailableSeriesInfo = null })
                     }
                 } else {
                     Box(
@@ -1026,4 +876,479 @@ private fun cleanEpisodeTitle(title: String, seriesName: String?, seasonCode: St
     // También remover patrones genéricos SxxExx al inicio
     result = result.replace(Regex("^S\\d{1,2}E\\d{1,2}\\s*[-:|]?\\s*", RegexOption.IGNORE_CASE), "")
     return result.trim()
+}
+
+@Composable
+private fun InfoTabContent(
+    series: Series,
+    ratingValue: Float,
+    seasonCount: Int,
+    synopsisExpanded: Boolean,
+    onToggleSynopsis: () -> Unit,
+    tmdbEnabled: Boolean,
+    tmdbCast: List<com.iptv.playxy.domain.TmdbCast>,
+    tmdbSimilar: List<com.iptv.playxy.domain.TmdbSeriesLink>,
+    tmdbCollection: List<com.iptv.playxy.domain.TmdbSeriesLink>,
+    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast) -> Unit,
+    onNavigateToSeries: (String, String) -> Unit,
+    onUnavailable: (com.iptv.playxy.domain.TmdbSeriesLink) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                val initialFontSize = MaterialTheme.typography.headlineMedium.fontSize
+                var fontSize by remember { mutableStateOf(initialFontSize) }
+                var reductionCount by remember { mutableIntStateOf(0) }
+
+                Text(
+                    text = series.name,
+                    fontSize = fontSize,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                    onTextLayout = { textLayoutResult ->
+                        if (textLayoutResult.hasVisualOverflow && reductionCount < 5) {
+                            reductionCount++
+                            fontSize = fontSize * 0.9f
+                        }
+                    }
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        repeat(5) { index ->
+                            val filled = ratingValue >= index + 1
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = if (filled) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "$seasonCount Temporadas",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (!series.releaseDate.isNullOrEmpty()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = series.releaseDate,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        SynopsisBlock(
+            synopsis = series.plot,
+            expanded = synopsisExpanded,
+            onToggle = onToggleSynopsis
+        )
+
+        Text(
+            text = "Género: ${series.genre ?: "—"}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "Dirigido por: ${series.director ?: "—"}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        if (tmdbEnabled && tmdbCast.isNotEmpty()) {
+            Text(
+                text = "Reparto & Equipo",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(tmdbCast) { cast ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(90.dp)
+                            .clickable { onNavigateToActor(cast) }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(70.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            AsyncImage(
+                                model = cast.profile,
+                                contentDescription = cast.name,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                                error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_report_image),
+                                placeholder = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = cast.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (!cast.character.isNullOrBlank()) {
+                            Text(
+                                text = cast.character,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (tmdbEnabled && tmdbCollection.size > 1) {
+            Text(
+                text = "Colección relacionada",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(tmdbCollection) { item ->
+                    SeriesSimilarCard(
+                        item = item,
+                        onClick = {
+                            if (item.availableSeriesId != null && item.availableCategoryId != null) {
+                                onNavigateToSeries(item.availableSeriesId, item.availableCategoryId)
+                            } else {
+                                onUnavailable(item)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        if (tmdbEnabled && tmdbSimilar.isNotEmpty()) {
+            Text(
+                text = "Series similares",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(tmdbSimilar) { item ->
+                    SeriesSimilarCard(
+                        item = item,
+                        onClick = {
+                            if (item.availableSeriesId != null && item.availableCategoryId != null) {
+                                onNavigateToSeries(item.availableSeriesId, item.availableCategoryId)
+                            } else {
+                                onUnavailable(item)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpisodesTabContent(
+    series: Series,
+    seasonNumbers: List<Int>,
+    selectedSeasonState: () -> Int,
+    onSeasonSelected: (Int) -> Unit,
+    episodesBySeason: Map<Int, List<Episode>>,
+    resumeEpisode: Episode?,
+    episodeHasProgress: Boolean,
+    onPlayResume: () -> Unit,
+    episodeProgress: Map<String, EpisodeProgressEntity>,
+    currentPlayingEpisodeId: String?,
+    currentPlaybackPosition: Long,
+    currentPlaybackDuration: Long,
+    onPlayEpisode: (Episode) -> Unit
+) {
+    val selectedSeason = selectedSeasonState()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = series.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Temporadas: ${seasonNumbers.size}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        resumeEpisode?.let { ep ->
+            Button(
+                onClick = onPlayResume,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (episodeHasProgress) "Reanudar" else "Ver ahora",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = displayEpisodeTitle(ep, series.name),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            var seasonMenuExpanded by remember { mutableStateOf(false) }
+            Box {
+                Row(
+                    modifier = Modifier.clickable { seasonMenuExpanded = true },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Temporada $selectedSeason",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Icon(Icons.Default.KeyboardArrowDown, null, tint = MaterialTheme.colorScheme.onBackground)
+                }
+                DropdownMenu(
+                    expanded = seasonMenuExpanded,
+                    onDismissRequest = { seasonMenuExpanded = false }
+                ) {
+                    seasonNumbers.forEach { seasonNum ->
+                        DropdownMenuItem(
+                            text = { Text("Temporada $seasonNum") },
+                            onClick = {
+                                onSeasonSelected(seasonNum)
+                                seasonMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            val episodes = episodesBySeason[selectedSeason] ?: emptyList()
+            Text(
+                text = "Episodios (${episodes.size})",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        val episodes = episodesBySeason[selectedSeason] ?: emptyList()
+        episodes.forEach { ep ->
+            EpisodeCard(
+                episode = ep,
+                seriesName = series.name,
+                episodeProgress = episodeProgress[ep.id],
+                isCurrentlyPlaying = currentPlayingEpisodeId == ep.id,
+                currentPlaybackPosition = if (currentPlayingEpisodeId == ep.id) currentPlaybackPosition else 0L,
+                currentPlaybackDuration = if (currentPlayingEpisodeId == ep.id) currentPlaybackDuration else 0L,
+                onPlay = { onPlayEpisode(ep) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SeriesSimilarCard(
+    item: com.iptv.playxy.domain.TmdbSeriesLink,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(140.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                AsyncImage(
+                    model = item.poster ?: item.backdrop,
+                    contentDescription = item.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+            item.firstAirDate?.takeIf { it.isNotBlank() }?.let { date ->
+                Text(
+                    text = date.take(4),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (item.rating != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        tint = Color(0xFFFFD700),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = String.format("%.1f", item.rating),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UnavailableSeriesDialog(
+    item: com.iptv.playxy.domain.TmdbSeriesLink,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            tonalElevation = 4.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = item.tmdbTitle ?: item.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 120.dp, height = 160.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        AsyncImage(
+                            model = item.poster ?: item.backdrop,
+                            contentDescription = item.tmdbTitle ?: item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (!item.firstAirDate.isNullOrBlank()) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "No disponible · ${item.firstAirDate.take(4)}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        if (!item.overview.isNullOrBlank()) {
+                            Text(
+                                text = item.overview,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 8,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

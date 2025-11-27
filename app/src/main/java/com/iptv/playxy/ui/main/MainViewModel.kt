@@ -117,6 +117,30 @@ class MainViewModel @Inject constructor(
     fun onSortOrderChange(order: SortOrder) {
         _state.value = _state.value.copy(sortOrder = order)
     }
+
+    suspend fun fetchHomeHighlights(): HomeHighlights {
+        val vod = repository.getVodStreams().filter { !it.tmdbId.isNullOrBlank() }
+        val series = repository.getSeries().filter { !it.tmdbId.isNullOrBlank() }
+        val movieLinks = vod.take(30).map {
+            HomeLink(
+                title = it.name,
+                poster = it.streamIcon,
+                year = null,
+                availableStreamId = it.streamId,
+                availableCategoryId = it.categoryId
+            )
+        }
+        val seriesLinks = series.take(30).map {
+            HomeLink(
+                title = it.name,
+                poster = it.cover,
+                year = it.releaseDate?.take(4),
+                availableSeriesId = it.seriesId,
+                availableCategoryId = it.categoryId
+            )
+        }
+        return HomeHighlights(movies = movieLinks, series = seriesLinks)
+    }
     
     fun onReload() {
         viewModelScope.launch {

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -62,6 +63,7 @@ class TVViewModel @Inject constructor(
     init {
         loadUserProfile()
         loadInitial()
+        observeRecentsCleared()
     }
 
     private fun loadInitial() {
@@ -102,6 +104,19 @@ class TVViewModel @Inject constructor(
     private suspend fun loadRecentIds() {
         val recents = recentChannelDao.getRecentChannels()
         _uiState.value = _uiState.value.copy(recents = recents.map { it.channelId })
+    }
+
+    private fun observeRecentsCleared() {
+        viewModelScope.launch {
+            repository.recentsCleared().collect { type ->
+                if (type == "live" || type == "all") {
+                    _uiState.value = _uiState.value.copy(recents = emptyList())
+                    if (_uiState.value.selectedCategory?.categoryId == "recents") {
+                        refreshPaging()
+                    }
+                }
+            }
+        }
     }
 
     private fun loadCategories() {
