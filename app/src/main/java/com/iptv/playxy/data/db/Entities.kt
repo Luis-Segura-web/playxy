@@ -12,7 +12,10 @@ data class UserProfileEntity(
     val password: String,
     val url: String,
     val lastUpdated: Long,
-    val isValid: Boolean
+    val isValid: Boolean,
+    val expiry: Long?,
+    val maxConnections: Int?,
+    val status: String?
 )
 
 @Entity(
@@ -161,4 +164,3 @@ data class EpisodeProgressEntity(
     val durationMs: Long, // Duración total
     val timestamp: Long // Última actualización
 )
-

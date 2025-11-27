@@ -59,6 +59,7 @@ class SeriesViewModel @Inject constructor(
             loadCategories()
         }
         observeRecentsCleared()
+        observePrefEvents()
     }
 
     private fun normalizeCategories(list: List<Category>, defaultAllName: String): List<Category> {
@@ -187,6 +188,17 @@ class SeriesViewModel @Inject constructor(
                     if (_uiState.value.selectedCategory.categoryId == "recents") {
                         refreshPaging()
                     }
+                }
+            }
+        }
+    }
+
+    private fun observePrefEvents() {
+        viewModelScope.launch {
+            repository.prefEvents().collect { event ->
+                if (event == "parental" || event == "blocked_series") {
+                    loadCategories()
+                    refreshPaging()
                 }
             }
         }

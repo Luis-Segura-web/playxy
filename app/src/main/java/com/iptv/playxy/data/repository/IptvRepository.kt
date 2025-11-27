@@ -51,6 +51,7 @@ class IptvRepository @Inject constructor(
     private val recentVodDao = database.recentVodDao()
     private val recentSeriesDao = database.recentSeriesDao()
     private val recentsEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    private val prefEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
     private val vodInfoCacheMutex = Mutex()
     private val vodInfoCache = mutableMapOf<String, CachedVodInfo>()
     private val seriesInfoCacheMutex = Mutex()
@@ -72,6 +73,7 @@ class IptvRepository @Inject constructor(
     private val actorCacheTtlMs = 4 * 60 * 60 * 1000L // 4 horas
 
     fun recentsCleared(): SharedFlow<String> = recentsEvents.asSharedFlow()
+    fun prefEvents(): SharedFlow<String> = prefEvents.asSharedFlow()
     
     // User Profile operations
     suspend fun getProfile(): UserProfile? {
@@ -85,6 +87,22 @@ class IptvRepository @Inject constructor(
     suspend fun saveProfile(profile: UserProfile) {
         userProfileDao.insertProfile(EntityMapper.toEntity(profile))
     }
+
+    private fun parseExpirySeconds(expDate: String?): Long? {
+        val value = expDate?.takeIf { it.isNotBlank() && it.lowercase() != "null" }?.toLongOrNull()
+        return value?.takeIf { it > 0 }
+    }
+
+    private fun updateProfileWithAccountInfo(
+        profile: UserProfile,
+        loginResponse: com.iptv.playxy.data.api.LoginResponse?
+    ): UserProfile {
+        val userInfo = loginResponse?.userInfo
+        val expiry = parseExpirySeconds(userInfo?.expDate)
+        val maxCons = userInfo?.maxConnections?.toIntOrNull()
+        val status = userInfo?.status
+        return profile.copy(expiry = expiry, maxConnections = maxCons, status = status)
+    }
     
     suspend fun deleteProfile() {
         userProfileDao.deleteAllProfiles()
@@ -95,11 +113,35 @@ class IptvRepository @Inject constructor(
             // Create API service with the provided base URL
             val apiService = apiServiceFactory.createService(baseUrl)
             val response = apiService.validateCredentials(username, password)
-            response.isSuccessful
+            response.isSuccessful && response.body()?.userInfo?.status?.equals("active", true) == true
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
+    }
+
+    suspend fun fetchAccountInfo(
+        username: String,
+        password: String,
+        baseUrl: String
+    ): com.iptv.playxy.data.api.LoginResponse? {
+        return try {
+            val apiService = apiServiceFactory.createService(baseUrl)
+            val response = apiService.validateCredentials(username, password)
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun refreshStoredProfileInfo(): UserProfile? {
+        val stored = userProfileDao.getProfile() ?: return null
+        val domain = EntityMapper.toDomain(stored)
+        val login = fetchAccountInfo(domain.username, domain.password, domain.url)
+        val updated = updateProfileWithAccountInfo(domain, login)
+        saveProfile(updated)
+        return updated
     }
     
     // Content loading operations
@@ -334,6 +376,7 @@ class IptvRepository @Inject constructor(
 
     suspend fun setTmdbEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
         prefs.setTmdbEnabled(enabled)
+        prefEvents.tryEmit("tmdb")
     }
 
     suspend fun isParentalControlEnabled(): Boolean = withContext(Dispatchers.IO) { prefs.isParentalControlEnabled() }
@@ -341,6 +384,7 @@ class IptvRepository @Inject constructor(
     suspend fun updateParentalControl(enabled: Boolean, pin: String?) = withContext(Dispatchers.IO) {
         prefs.setParentalControlEnabled(enabled)
         pin?.let { prefs.setParentalPin(it) }
+        prefEvents.tryEmit("parental")
     }
 
     suspend fun getParentalPin(): String? = withContext(Dispatchers.IO) { prefs.getParentalPin() }
@@ -365,6 +409,7 @@ class IptvRepository @Inject constructor(
 
     suspend fun updateBlockedCategories(type: String, ids: Set<String>) = withContext(Dispatchers.IO) {
         prefs.setBlockedCategories(type, ids)
+        prefEvents.tryEmit("blocked_$type")
     }
     
     private suspend fun loadCategories(apiService: com.iptv.playxy.data.api.IptvApiService, username: String, password: String) {
@@ -1239,6 +1284,142 @@ class IptvRepository @Inject constructor(
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    /**
+     * Get trending movies from TMDB
+     */
+    suspend fun getTrendingMovies(): List<com.iptv.playxy.data.api.TmdbMovieResult> {
+        return try {
+            val response = tmdbApiService.getTrendingMovies()
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.results ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get trending series from TMDB
+     */
+    suspend fun getTrendingSeries(): List<com.iptv.playxy.data.api.TmdbSeriesResult> {
+        return try {
+            val response = tmdbApiService.getTrendingSeries()
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.results ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get popular movies from TMDB
+     */
+    suspend fun getPopularMovies(): List<com.iptv.playxy.data.api.TmdbMovieResult> {
+        return try {
+            val response = tmdbApiService.getPopularMovies()
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.results ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get popular series from TMDB
+     */
+    suspend fun getPopularSeries(): List<com.iptv.playxy.data.api.TmdbSeriesResult> {
+        return try {
+            val response = tmdbApiService.getPopularSeries()
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.results ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get top rated movies from TMDB
+     */
+    suspend fun getTopRatedMovies(): List<com.iptv.playxy.data.api.TmdbMovieResult> {
+        return try {
+            val response = tmdbApiService.getTopRatedMovies()
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.results ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get top rated series from TMDB
+     */
+    suspend fun getTopRatedSeries(): List<com.iptv.playxy.data.api.TmdbSeriesResult> {
+        return try {
+            val response = tmdbApiService.getTopRatedSeries()
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.results ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get now playing movies from TMDB
+     */
+    suspend fun getNowPlayingMovies(): List<com.iptv.playxy.data.api.TmdbMovieResult> {
+        return try {
+            val response = tmdbApiService.getNowPlayingMovies()
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.results ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Get on the air series from TMDB
+     */
+    suspend fun getOnTheAirSeries(): List<com.iptv.playxy.data.api.TmdbSeriesResult> {
+        return try {
+            val response = tmdbApiService.getOnTheAirSeries()
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.results ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
         }
     }
 }

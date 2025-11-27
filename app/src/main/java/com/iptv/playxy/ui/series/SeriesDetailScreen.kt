@@ -1253,6 +1253,7 @@ private fun SeriesSimilarCard(
                 )
             }
             if (item.rating != null) {
+                val rating5 = item.rating / 2
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(
                         imageVector = Icons.Default.Star,
@@ -1261,7 +1262,7 @@ private fun SeriesSimilarCard(
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = String.format("%.1f", item.rating),
+                        text = String.format("%.1f", rating5),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -64,6 +64,7 @@ class TVViewModel @Inject constructor(
         loadUserProfile()
         loadInitial()
         observeRecentsCleared()
+        observePrefEvents()
     }
 
     private fun loadInitial() {
@@ -114,6 +115,17 @@ class TVViewModel @Inject constructor(
                     if (_uiState.value.selectedCategory?.categoryId == "recents") {
                         refreshPaging()
                     }
+                }
+            }
+        }
+    }
+
+    private fun observePrefEvents() {
+        viewModelScope.launch {
+            repository.prefEvents().collect { event ->
+                if (event == "parental" || event == "blocked_live") {
+                    loadCategories()
+                    refreshPaging()
                 }
             }
         }

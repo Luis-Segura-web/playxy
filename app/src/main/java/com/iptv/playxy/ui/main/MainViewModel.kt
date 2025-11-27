@@ -53,6 +53,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             loadStats()
         }
+        observePrefEvents()
     }
     
     private suspend fun loadStats() {
@@ -172,6 +173,16 @@ class MainViewModel @Inject constructor(
     fun onForceReload() {
         viewModelScope.launch {
             repository.clearCache()
+        }
+    }
+
+    private fun observePrefEvents() {
+        viewModelScope.launch {
+            repository.prefEvents().collect { event ->
+                when {
+                    event.startsWith("parental") || event.startsWith("blocked_") -> loadStats()
+                }
+            }
         }
     }
 }

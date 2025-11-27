@@ -88,19 +88,23 @@ class LoginViewModel @Inject constructor(
             try {
                 val currentState = _state.value
                 
-                // For now, we'll skip the actual API validation since it requires a real endpoint
-                // In production, uncomment the following line:
-                // val isValid = repository.validateCredentials(currentState.username, currentState.password, currentState.url)
-                val isValid = true // Temporarily assume valid
-                
+                val loginInfo = repository.fetchAccountInfo(
+                    currentState.username,
+                    currentState.password,
+                    currentState.url
+                )
+
+                val isValid = loginInfo?.userInfo?.status?.equals("active", ignoreCase = true) == true
                 if (isValid) {
-                    // Save profile
                     val profile = UserProfile(
                         profileName = currentState.profileName,
                         username = currentState.username,
                         password = currentState.password,
                         url = currentState.url,
-                        isValid = true
+                        isValid = true,
+                        expiry = loginInfo?.userInfo?.expDate?.toLongOrNull()?.takeIf { it > 0 },
+                        maxConnections = loginInfo?.userInfo?.maxConnections?.toIntOrNull(),
+                        status = loginInfo?.userInfo?.status
                     )
                     repository.saveProfile(profile)
                     

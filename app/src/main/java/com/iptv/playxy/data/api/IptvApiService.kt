@@ -118,5 +118,5 @@ interface IptvApiService {
     suspend fun validateCredentials(
         @Query("username") username: String,
         @Query("password") password: String
-    ): Response<Any>
+    ): Response<LoginResponse>
 }

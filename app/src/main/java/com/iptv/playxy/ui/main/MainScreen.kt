@@ -189,48 +189,75 @@ fun MainScreen(
                 } else {
                     // Normal TopBar
                     TopAppBar(
-                    title = {
-                        val subtitle = when (state.currentDestination) {
-                            MainDestination.TV -> "${state.liveStreamCount} canales"
-                            MainDestination.MOVIES -> "${state.vodStreamCount} películas"
-                            MainDestination.SERIES -> "${state.seriesCount} series"
-                            else -> ""
-                        }
-                        val lastUpdateTime = when (state.currentDestination) {
-                            MainDestination.TV -> state.lastLiveUpdateTime
-                            MainDestination.MOVIES -> state.lastVodUpdateTime
-                            MainDestination.SERIES -> state.lastSeriesUpdateTime
-                            else -> 0L
-                        }
-                        val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
-                        val lastUpdateText = if (lastUpdateTime > 0) {
-                            dateFormat.format(Date(lastUpdateTime))
-                        } else {
-                            "Sin sincronizar"
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = state.currentDestination.title,
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            if (subtitle.isNotEmpty()) {
-                                Text(
-                                    text = "$subtitle · $lastUpdateText",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                        title = {
+                            when (state.currentDestination) {
+                                MainDestination.HOME -> {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = "Descubre",
+                                            style = MaterialTheme.typography.titleLarge,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Contenido destacado de TMDB",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                MainDestination.SETTINGS -> {
+                                    Text(
+                                        text = "Ajustes",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                else -> {
+                                    val subtitle = when (state.currentDestination) {
+                                        MainDestination.TV -> "${state.liveStreamCount} canales"
+                                        MainDestination.MOVIES -> "${state.vodStreamCount} películas"
+                                        MainDestination.SERIES -> "${state.seriesCount} series"
+                                        else -> ""
+                                    }
+                                    val lastUpdateTime = when (state.currentDestination) {
+                                        MainDestination.TV -> state.lastLiveUpdateTime
+                                        MainDestination.MOVIES -> state.lastVodUpdateTime
+                                        MainDestination.SERIES -> state.lastSeriesUpdateTime
+                                        else -> 0L
+                                    }
+                                    val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
+                                    val lastUpdateText = if (lastUpdateTime > 0) {
+                                        dateFormat.format(Date(lastUpdateTime))
+                                    } else {
+                                        "Sin sincronizar"
+                                    }
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = state.currentDestination.title,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (subtitle.isNotEmpty()) {
+                                            Text(
+                                                text = "$subtitle · $lastUpdateText",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        }
-                    },
-                    actions = {
-                        // Show search, sort, and reload only for TV, Movies, and Series tabs
-                        if (state.currentDestination in listOf(
-                                MainDestination.TV,
-                                MainDestination.MOVIES,
-                                MainDestination.SERIES
-                            )
-                        ) {
+                        },
+                        actions = {
+                            // Show search, sort, and reload only for TV, Movies, and Series tabs
+                            if (state.currentDestination in listOf(
+                                    MainDestination.TV,
+                                    MainDestination.MOVIES,
+                                    MainDestination.SERIES
+                                )
+                            ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -378,7 +405,7 @@ fun MainScreen(
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
                     )
-                )
+                    )
                 }
             }
         },
@@ -438,9 +465,7 @@ fun MainScreen(
                 )
         ) {
             when (state.currentDestination) {
-                MainDestination.HOME -> HomeContent(
-                    state = state,
-                    viewModel = viewModel,
+                MainDestination.HOME -> com.iptv.playxy.ui.home.HomeScreen(
                     onNavigateToMovie = onNavigateToMovieDetail,
                     onNavigateToSeries = onNavigateToSeriesDetail
                 )
@@ -462,7 +487,7 @@ fun MainScreen(
                         onNavigateToSeriesDetail(series.seriesId, series.categoryId)
                     }
                 )
-                MainDestination.SETTINGS -> SettingsContent(
+                MainDestination.SETTINGS -> com.iptv.playxy.ui.settings.ModernSettingsScreen(
                     onLogout = viewModel::onLogout,
                     onForceReload = {
                         viewModel.onForceReload()
@@ -718,11 +743,69 @@ fun SettingsContent(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "Configuración",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 2.dp,
+                shadowElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Cuenta",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = uiState.profileName.ifBlank { "Perfil sin nombre" },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Usuario: ${uiState.username.ifBlank { "—" }}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Servidor: ${uiState.serverUrl.ifBlank { "—" }}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = "Vence: ${uiState.expiry}",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = "Conexiones: ${uiState.connections}",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                    Button(
+                        onClick = { viewModel.reloadProfile() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Recargar datos de cuenta")
+                    }
+                }
+            }
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -1321,4 +1404,4 @@ private fun ChangePinDialog(
     )
 }
 
-private fun sanitizePin(input: String): String = input.filter { it.isDigit() }.take(4)
+internal fun sanitizePin(input: String): String = input.filter { it.isDigit() }.take(4)

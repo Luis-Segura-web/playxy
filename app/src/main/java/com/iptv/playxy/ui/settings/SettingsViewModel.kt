@@ -19,6 +19,12 @@ data class SettingsUiState(
     val parentalEnabled: Boolean = false,
     val parentalPin: String = "",
     val tmdbEnabled: Boolean = false,
+    val profileName: String = "",
+    val username: String = "",
+    val serverUrl: String = "",
+    val expiry: String = "Ilimitada",
+    val connections: String = "N/D",
+    val status: String = "Desconocido",
     val isSaving: Boolean = false,
     val liveCategories: List<com.iptv.playxy.domain.Category> = emptyList(),
     val vodCategories: List<com.iptv.playxy.domain.Category> = emptyList(),
@@ -50,6 +56,7 @@ class SettingsViewModel @Inject constructor(
             val blockedLive = repository.getBlockedCategories("live")
             val blockedVod = repository.getBlockedCategories("vod")
             val blockedSeries = repository.getBlockedCategories("series")
+            val profile = repository.refreshStoredProfileInfo() ?: repository.getProfile()
             _uiState.value = _uiState.value.copy(
                 recentsLimit = limit,
                 recentsLimitInput = limit.toString(),
@@ -61,9 +68,22 @@ class SettingsViewModel @Inject constructor(
                 seriesCategories = seriesCats,
                 blockedLive = blockedLive,
                 blockedVod = blockedVod,
-                blockedSeries = blockedSeries
+                blockedSeries = blockedSeries,
+                profileName = profile?.profileName.orEmpty(),
+                username = profile?.username.orEmpty(),
+                serverUrl = profile?.url.orEmpty(),
+                expiry = profile?.expiry?.let { formatExpiry(it) } ?: "Ilimitada",
+                connections = profile?.maxConnections?.toString() ?: "N/D",
+                status = profile?.status?.ifBlank { null } ?: "Desconocido"
             )
         }
+    }
+
+    private fun formatExpiry(expirySeconds: Long): String {
+        // API returns epoch seconds; convert to date string
+        val millis = expirySeconds * 1000
+        val formatter = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+        return formatter.format(java.util.Date(millis))
     }
 
     fun onRecentsLimitInputChange(input: String) {
@@ -130,6 +150,21 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             repository.clearRecentSeries()
             _events.emit(SettingsEvent.ShowMessage("Series recientes limpiadas"))
+        }
+    }
+
+    fun reloadProfile() {
+        viewModelScope.launch {
+            val profile = repository.refreshStoredProfileInfo() ?: repository.getProfile()
+            _uiState.value = _uiState.value.copy(
+                profileName = profile?.profileName.orEmpty(),
+                username = profile?.username.orEmpty(),
+                serverUrl = profile?.url.orEmpty(),
+                expiry = profile?.expiry?.let { formatExpiry(it) } ?: "Ilimitada",
+                connections = profile?.maxConnections?.toString() ?: "N/D",
+                status = profile?.status?.ifBlank { null } ?: "Desconocido"
+            )
+            _events.emit(SettingsEvent.ShowMessage("Datos de cuenta actualizados"))
         }
     }
 

@@ -72,6 +72,7 @@ class MoviesViewModel @Inject constructor(
         loadInitialData()
         refreshTmdbEnabled()
         observeRecentsCleared()
+        observePrefEvents()
     }
 
     private fun loadInitialData() {
@@ -225,6 +226,20 @@ class MoviesViewModel @Inject constructor(
                     if (_uiState.value.selectedCategory.categoryId == "recents") {
                         refreshPaging()
                     }
+                }
+            }
+        }
+    }
+
+    private fun observePrefEvents() {
+        viewModelScope.launch {
+            repository.prefEvents().collect { event ->
+                when {
+                    event == "parental" || event == "blocked_vod" -> {
+                        loadCategories()
+                        refreshPaging()
+                    }
+                    event == "tmdb" -> refreshTmdbEnabled()
                 }
             }
         }

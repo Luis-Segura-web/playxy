@@ -17,7 +17,10 @@ object EntityMapper {
             password = profile.password,
             url = profile.url,
             lastUpdated = profile.lastUpdated,
-            isValid = profile.isValid
+            isValid = profile.isValid,
+            expiry = profile.expiry,
+            maxConnections = profile.maxConnections,
+            status = profile.status
         )
     }
     
@@ -29,7 +32,10 @@ object EntityMapper {
             password = entity.password,
             url = entity.url,
             lastUpdated = entity.lastUpdated,
-            isValid = entity.isValid
+            isValid = entity.isValid,
+            expiry = entity.expiry,
+            maxConnections = entity.maxConnections,
+            status = entity.status
         )
     }
     

@@ -384,10 +384,11 @@ private fun FilmographyCard(
                     }
                 }
                 if (item.rating != null) {
+                    val rating5 = item.rating / 2
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
                         Text(
-                            text = String.format("%.1f", item.rating),
+                            text = String.format("%.1f", rating5),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -581,10 +582,11 @@ private fun SeriesFilmographyCard(
                     }
                 }
                 if (item.rating != null) {
+                    val rating5 = item.rating / 2
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
                         Text(
-                            text = String.format("%.1f", item.rating),
+                            text = String.format("%.1f", rating5),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

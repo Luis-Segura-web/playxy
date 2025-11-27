@@ -36,4 +36,53 @@ interface TmdbApiService {
         @Query("language") language: String = "es-ES",
         @Query("include_image_language") includeImageLanguage: String = "es,en,null"
     ): Response<com.iptv.playxy.data.api.TmdbPersonResponse>
+
+    @GET("trending/movie/week")
+    suspend fun getTrendingMovies(
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1
+    ): Response<TmdbPagedMovies>
+
+    @GET("trending/tv/week")
+    suspend fun getTrendingSeries(
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1
+    ): Response<TmdbPagedSeries>
+
+    @GET("movie/popular")
+    suspend fun getPopularMovies(
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1
+    ): Response<TmdbPagedMovies>
+
+    @GET("tv/popular")
+    suspend fun getPopularSeries(
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1
+    ): Response<TmdbPagedSeries>
+
+    @GET("movie/top_rated")
+    suspend fun getTopRatedMovies(
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1
+    ): Response<TmdbPagedMovies>
+
+    @GET("tv/top_rated")
+    suspend fun getTopRatedSeries(
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1
+    ): Response<TmdbPagedSeries>
+
+    @GET("movie/now_playing")
+    suspend fun getNowPlayingMovies(
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1,
+        @Query("region") region: String = "ES"
+    ): Response<TmdbPagedMovies>
+
+    @GET("tv/on_the_air")
+    suspend fun getOnTheAirSeries(
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1
+    ): Response<TmdbPagedSeries>
 }

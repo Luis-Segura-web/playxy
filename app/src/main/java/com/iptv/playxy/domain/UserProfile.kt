@@ -7,5 +7,8 @@ data class UserProfile(
     val password: String,
     val url: String,
     val lastUpdated: Long = System.currentTimeMillis(),
-    val isValid: Boolean = true
+    val isValid: Boolean = true,
+    val expiry: Long? = null,
+    val maxConnections: Int? = null,
+    val status: String? = null
 )
