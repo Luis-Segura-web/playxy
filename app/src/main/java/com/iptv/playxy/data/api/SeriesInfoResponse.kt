@@ -58,6 +58,8 @@ data class EpisodeInfoResponse(
 data class SeriesInfoDetailsResponse(
     @Json(name = "name") val name: String?,
     @Json(name = "cover") val cover: String?,
+    @Json(name = "movie_image") val movieImage: String?,
+    @Json(name = "backdrop") val backdrop: String?,
     @Json(name = "plot") val plot: String?,
     @Json(name = "cast") val cast: String?,
     @Json(name = "director") val director: String?,

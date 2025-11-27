@@ -18,6 +18,7 @@ data class SettingsUiState(
     val recentsLimitInput: String = PreferencesManager.DEFAULT_RECENTS_LIMIT.toString(),
     val parentalEnabled: Boolean = false,
     val parentalPin: String = "",
+    val tmdbEnabled: Boolean = false,
     val isSaving: Boolean = false,
     val liveCategories: List<com.iptv.playxy.domain.Category> = emptyList(),
     val vodCategories: List<com.iptv.playxy.domain.Category> = emptyList(),
@@ -42,6 +43,7 @@ class SettingsViewModel @Inject constructor(
             val limit = repository.getRecentsLimit()
             val parentalEnabled = repository.isParentalControlEnabled()
             val pin = repository.getParentalPin().orEmpty()
+            val tmdbEnabled = repository.isTmdbEnabled()
             val liveCats = repository.getCategories("live")
             val vodCats = repository.getCategories("vod")
             val seriesCats = repository.getCategories("series")
@@ -53,6 +55,7 @@ class SettingsViewModel @Inject constructor(
                 recentsLimitInput = limit.toString(),
                 parentalEnabled = parentalEnabled,
                 parentalPin = pin,
+                tmdbEnabled = tmdbEnabled,
                 liveCategories = liveCats,
                 vodCategories = vodCats,
                 seriesCategories = seriesCats,
@@ -87,6 +90,13 @@ class SettingsViewModel @Inject constructor(
     fun toggleParental(enabled: Boolean) {
         viewModelScope.launch {
             setParentalEnabled(enabled)
+        }
+    }
+
+    fun toggleTmdb(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setTmdbEnabled(enabled)
+            _uiState.value = _uiState.value.copy(tmdbEnabled = enabled)
         }
     }
 

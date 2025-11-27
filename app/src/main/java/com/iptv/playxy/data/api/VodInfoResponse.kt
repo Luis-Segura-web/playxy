@@ -19,6 +19,7 @@ data class VodInfo(
     @field:Json(name = "o_name") val originalName: String?,
     @field:Json(name = "cover_big") val coverBig: String?,
     @field:Json(name = "movie_image") val movieImage: String?,
+    @field:Json(name = "backdrop") val backdrop: String?,
     @field:Json(name = "releasedate") val releaseDate: String?,
     @field:Json(name = "episode_run_time") val episodeRunTime: String?,
     @field:Json(name = "youtube_trailer") val youtubeTrailer: String?,
@@ -52,4 +53,3 @@ data class MovieData(
     @field:Json(name = "custom_sid") val customSid: String?,
     @field:Json(name = "direct_source") val directSource: String?
 )
-

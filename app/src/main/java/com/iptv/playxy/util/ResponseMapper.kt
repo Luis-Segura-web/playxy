@@ -90,10 +90,34 @@ object ResponseMapper {
     fun toSeriesInfo(response: SeriesInfoResponse, originalSeries: Series): SeriesInfo {
         val seasons = response.seasons?.map { toSeason(it) }?.sortedBy { it.seasonNumber } ?: emptyList()
         val episodes = response.episodes ?: emptyMap()
+        val infoDetails = response.info
+
+        val backdrops = when {
+            !infoDetails?.backdropPath.isNullOrEmpty() -> infoDetails?.backdropPath
+            !infoDetails?.backdrop.isNullOrBlank() -> listOf(infoDetails.backdrop)
+            originalSeries.backdropPath.isNotEmpty() -> originalSeries.backdropPath
+            else -> null
+        } ?: emptyList()
+
+        val mergedSeries = originalSeries.copy(
+            name = infoDetails?.name ?: originalSeries.name,
+            cover = infoDetails?.cover ?: infoDetails?.movieImage ?: originalSeries.cover,
+            plot = infoDetails?.plot ?: originalSeries.plot,
+            cast = infoDetails?.cast ?: originalSeries.cast,
+            director = infoDetails?.director ?: originalSeries.director,
+            genre = infoDetails?.genre ?: originalSeries.genre,
+            releaseDate = infoDetails?.releaseDate ?: originalSeries.releaseDate,
+            rating = infoDetails?.rating?.toFloatOrNull() ?: originalSeries.rating,
+            rating5Based = infoDetails?.rating5Based?.toFloatOrNull() ?: originalSeries.rating5Based,
+            backdropPath = backdrops,
+            youtubeTrailer = infoDetails?.youtubeTrailer ?: originalSeries.youtubeTrailer,
+            episodeRunTime = infoDetails?.episodeRunTime ?: originalSeries.episodeRunTime,
+            lastModified = infoDetails?.lastModified ?: originalSeries.lastModified
+        )
 
         return SeriesInfo(
             seasons = seasons,
-            info = originalSeries,
+            info = mergedSeries,
             episodesBySeason = episodes.mapValues { (_, episodeList) ->
                 episodeList.map { toEpisode(it) }.sortedBy { it.episodeNum }
             }
@@ -140,6 +164,11 @@ object ResponseMapper {
 
     fun toVodInfo(response: VodInfoResponse): VodInfo? {
         val info = response.info ?: return null
+        val backdrops = when {
+            !info.backdropPath.isNullOrEmpty() -> info.backdropPath
+            !info.backdrop.isNullOrBlank() -> listOf(info.backdrop)
+            else -> null
+        }
         return VodInfo(
             tmdbId = info.tmdbId,
             name = info.name ?: "",
@@ -160,7 +189,7 @@ object ResponseMapper {
             rating5Based = info.rating5Based,
             country = info.country,
             genre = info.genre,
-            backdropPath = info.backdropPath,
+            backdropPath = backdrops,
             durationSecs = info.durationSecs,
             video = info.video,
             audio = info.audio,

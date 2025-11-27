@@ -34,11 +34,14 @@ data class MoviesUiState(
     val recentIds: List<String> = emptyList(),
     val selectedMovieInfo: VodInfo? = null,
     val isLoadingMovieInfo: Boolean = false,
+    val selectedActor: com.iptv.playxy.domain.ActorDetails? = null,
+    val isLoadingActor: Boolean = false,
     val movieProgress: MovieProgressEntity? = null,
     val parentalEnabled: Boolean = false,
     val blockedCategories: Set<String> = emptySet(),
     val searchQuery: String = "",
-    val sortOrder: SortOrder = SortOrder.DEFAULT
+    val sortOrder: SortOrder = SortOrder.DEFAULT,
+    val tmdbEnabled: Boolean = false
 )
 
 @HiltViewModel
@@ -66,6 +69,7 @@ class MoviesViewModel @Inject constructor(
     init {
         loadUserProfile()
         loadInitialData()
+        refreshTmdbEnabled()
     }
 
     private fun loadInitialData() {
@@ -275,7 +279,7 @@ class MoviesViewModel @Inject constructor(
      */
     fun clearMovieInfo() {
         currentMovieId = null
-        _uiState.value = _uiState.value.copy(selectedMovieInfo = null, movieProgress = null)
+        _uiState.value = _uiState.value.copy(selectedMovieInfo = null, movieProgress = null, selectedActor = null)
     }
 
     /**
@@ -326,6 +330,47 @@ class MoviesViewModel @Inject constructor(
 
     suspend fun isParentalEnabled(): Boolean {
         return repository.isParentalControlEnabled()
+    }
+
+    fun refreshTmdbEnabled() {
+        viewModelScope.launch {
+            val enabled = repository.isTmdbEnabled()
+            _uiState.value = _uiState.value.copy(tmdbEnabled = enabled)
+        }
+    }
+
+    fun loadActorDetails(cast: com.iptv.playxy.domain.TmdbCast) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingActor = true)
+            val details = repository.getActorDetails(cast)
+            _uiState.value = _uiState.value.copy(
+                selectedActor = details,
+                isLoadingActor = false
+            )
+        }
+    }
+
+    fun loadActorDetails(actorId: Int, name: String?, profile: String?) {
+        if (actorId <= 0) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingActor = true)
+            val details = repository.getActorDetails(
+                com.iptv.playxy.domain.TmdbCast(
+                    id = actorId,
+                    name = name ?: "",
+                    character = null,
+                    profile = profile
+                )
+            )
+            _uiState.value = _uiState.value.copy(
+                selectedActor = details,
+                isLoadingActor = false
+            )
+        }
+    }
+
+    fun clearActorDetails() {
+        _uiState.value = _uiState.value.copy(selectedActor = null, isLoadingActor = false)
     }
 }
 

@@ -1,6 +1,10 @@
 package com.iptv.playxy.data.repository
 
 import com.iptv.playxy.data.api.ApiServiceFactory
+import com.iptv.playxy.data.api.TmdbApiService
+import com.iptv.playxy.data.api.TmdbMovieResponse
+import com.iptv.playxy.data.api.TmdbSeriesResponse
+import com.iptv.playxy.data.api.TmdbCollectionResponse
 import com.iptv.playxy.data.db.*
 import com.iptv.playxy.domain.*
 import com.iptv.playxy.util.EntityMapper
@@ -12,6 +16,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -20,6 +26,7 @@ import androidx.paging.filter
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.time.LocalDate
 
 /**
  * Repository for managing IPTV content data
@@ -40,6 +47,15 @@ class IptvRepository @Inject constructor(
     private val recentChannelDao = database.recentChannelDao()
     private val recentVodDao = database.recentVodDao()
     private val recentSeriesDao = database.recentSeriesDao()
+    private val vodInfoCacheMutex = Mutex()
+    private val vodInfoCache = mutableMapOf<String, CachedVodInfo>()
+    private val seriesInfoCacheMutex = Mutex()
+    private val seriesInfoCache = mutableMapOf<String, CachedSeriesInfo>()
+    private val actorCacheMutex = Mutex()
+    private val actorCache = mutableMapOf<Int, CachedActorDetails>()
+    private val tmdbApiService: TmdbApiService by lazy {
+        apiServiceFactory.createTmdbService(TMDB_API_KEY)
+    }
     
     // Cache expiration time (24 hours)
     private val cacheExpirationTime = 24 * 60 * 60 * 1000L
@@ -47,6 +63,9 @@ class IptvRepository @Inject constructor(
     private val vodCacheKey = "vod_content"
     private val seriesCacheKey = "series_content"
     private val allCacheKey = "all_content"
+    private val vodInfoCacheTtlMs = 4 * 60 * 60 * 1000L // 4 hours
+    private val seriesInfoCacheTtlMs = 4 * 60 * 60 * 1000L // 4 horas
+    private val actorCacheTtlMs = 4 * 60 * 60 * 1000L // 4 horas
     
     // User Profile operations
     suspend fun getProfile(): UserProfile? {
@@ -290,6 +309,12 @@ class IptvRepository @Inject constructor(
         recentChannelDao.deleteAll()
         recentVodDao.deleteAll()
         recentSeriesDao.deleteAll()
+    }
+
+    suspend fun isTmdbEnabled(): Boolean = withContext(Dispatchers.IO) { prefs.isTmdbEnabled() }
+
+    suspend fun setTmdbEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        prefs.setTmdbEnabled(enabled)
     }
 
     suspend fun isParentalControlEnabled(): Boolean = withContext(Dispatchers.IO) { prefs.isParentalControlEnabled() }
@@ -562,6 +587,404 @@ class IptvRepository @Inject constructor(
         }
     }
 
+    private suspend fun getCachedVodInfo(vodId: String, useTmdb: Boolean): VodInfo? {
+        val now = System.currentTimeMillis()
+        return vodInfoCacheMutex.withLock {
+            val iterator = vodInfoCache.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (now - entry.value.timestamp > vodInfoCacheTtlMs) iterator.remove()
+            }
+            vodInfoCache[vodId]
+                ?.takeIf { now - it.timestamp <= vodInfoCacheTtlMs && it.usesTmdb == useTmdb }
+                ?.info
+        }
+    }
+
+    private suspend fun cacheVodInfo(vodId: String, info: VodInfo, usesTmdb: Boolean) {
+        vodInfoCacheMutex.withLock {
+            vodInfoCache[vodId] = CachedVodInfo(info, System.currentTimeMillis(), usesTmdb)
+        }
+    }
+
+    private suspend fun getCachedSeriesInfo(seriesId: String, useTmdb: Boolean): SeriesInfo? {
+        val now = System.currentTimeMillis()
+        return seriesInfoCacheMutex.withLock {
+            val iterator = seriesInfoCache.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (now - entry.value.timestamp > seriesInfoCacheTtlMs) iterator.remove()
+            }
+            seriesInfoCache[seriesId]
+                ?.takeIf { now - it.timestamp <= seriesInfoCacheTtlMs && it.usesTmdb == useTmdb }
+                ?.info
+        }
+    }
+
+    private suspend fun cacheSeriesInfo(seriesId: String, info: SeriesInfo, usesTmdb: Boolean) {
+        seriesInfoCacheMutex.withLock {
+            seriesInfoCache[seriesId] = CachedSeriesInfo(info, System.currentTimeMillis(), usesTmdb)
+        }
+    }
+
+    private suspend fun getCachedActor(actorId: Int): com.iptv.playxy.domain.ActorDetails? {
+        val now = System.currentTimeMillis()
+        return actorCacheMutex.withLock {
+            val iterator = actorCache.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (now - entry.value.timestamp > actorCacheTtlMs) iterator.remove()
+            }
+            actorCache[actorId]?.takeIf { now - it.timestamp <= actorCacheTtlMs }?.details
+        }
+    }
+
+    private suspend fun cacheActor(actorId: Int, details: com.iptv.playxy.domain.ActorDetails) {
+        actorCacheMutex.withLock {
+            actorCache[actorId] = CachedActorDetails(details, System.currentTimeMillis())
+        }
+    }
+
+    private suspend fun fetchTmdbMovie(tmdbId: String): TmdbMovieResponse? {
+        return try {
+            val response = tmdbApiService.getMovie(tmdbId)
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private suspend fun fetchTmdbCollection(collectionId: Int): TmdbCollectionResponse? {
+        return try {
+            val response = tmdbApiService.getCollection(collectionId.toString())
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private suspend fun fetchTmdbSeries(tmdbId: String): TmdbSeriesResponse? {
+        return try {
+            val response = tmdbApiService.getSeries(tmdbId)
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun getActorDetails(cast: TmdbCast): com.iptv.playxy.domain.ActorDetails? {
+        if (!isTmdbEnabled()) return null
+        val castId = cast.id ?: return null
+        getCachedActor(castId)?.let { return it }
+        return try {
+            val response = tmdbApiService.getPerson(castId.toString())
+            if (response.isSuccessful) {
+                val body = response.body() ?: return null
+                val profile = cast.profile ?: tmdbProfileUrl(body.profilePath)
+                val movies = body.combinedCredits?.cast.orEmpty()
+                val allStreams = vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
+                val streamsByTmdb = allStreams.groupBy { it.tmdbId }
+
+                fun releaseDateKey(date: String?): Long =
+                    date?.let { runCatching { LocalDate.parse(it).toEpochDay() }.getOrNull() } ?: Long.MAX_VALUE
+
+                fun mapLinks(includeUnavailable: Boolean): List<com.iptv.playxy.domain.TmdbMovieLink> {
+                    val list = mutableListOf<com.iptv.playxy.domain.TmdbMovieLink>()
+                    movies.forEach { result ->
+                        val id = result.id ?: return@forEach
+                        val tmdbTitle = result.title ?: result.name ?: return@forEach
+                        val poster = tmdbPosterUrl(result.posterPath)
+                        val matches = streamsByTmdb[id.toString()].orEmpty()
+                        val releaseDate = result.releaseDate
+                        val overview = result.overview
+                        val backdrop = tmdbBackdropUrl(result.backdropPath)
+                        val rating = result.voteAverage
+                        if (matches.isEmpty()) {
+                            if (includeUnavailable) {
+                                list += com.iptv.playxy.domain.TmdbMovieLink(
+                                    tmdbId = id,
+                                    title = tmdbTitle,
+                                    poster = poster,
+                                    availableStreamId = null,
+                                    availableCategoryId = null,
+                                    tmdbTitle = tmdbTitle,
+                                    character = result.character,
+                                    releaseDate = releaseDate,
+                                    overview = overview,
+                                    backdrop = backdrop,
+                                    rating = rating
+                                )
+                            }
+                        } else {
+                            matches.forEach { stream ->
+                                list += com.iptv.playxy.domain.TmdbMovieLink(
+                                    tmdbId = id,
+                                    title = stream.name,
+                                    poster = stream.streamIcon ?: poster,
+                                    availableStreamId = stream.streamId,
+                                    availableCategoryId = stream.categoryId,
+                                    tmdbTitle = tmdbTitle,
+                                    character = result.character,
+                                    releaseDate = releaseDate,
+                                    overview = overview,
+                                    backdrop = backdrop,
+                                    rating = rating
+                                )
+                            }
+                }
+            }
+            return list
+                .distinctBy { it.availableStreamId ?: "tmdb-${it.tmdbId}" }
+        }
+
+                val available = mapLinks(includeUnavailable = false)
+                val unavailable = mapLinks(includeUnavailable = true).filter { it.availableStreamId == null }
+
+                com.iptv.playxy.domain.ActorDetails(
+                    name = cast.name,
+                    profile = profile,
+                    biography = body.biography,
+                    birthday = body.birthday,
+                    placeOfBirth = body.placeOfBirth,
+                    availableMovies = available,
+                    unavailableMovies = unavailable
+                ).also { cacheActor(castId, it) }
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun tmdbPosterUrl(path: String?): String? = path?.let { "https://image.tmdb.org/t/p/w400$it" }
+    private fun tmdbBackdropUrl(path: String?): String? = path?.let { "https://image.tmdb.org/t/p/w780$it" }
+    private fun tmdbProfileUrl(path: String?): String? = path?.let { "https://image.tmdb.org/t/p/w185$it" }
+
+    private fun tmdbBackdropList(path: String?, images: List<String> = emptyList()): List<String> {
+        val single = path?.let { "https://image.tmdb.org/t/p/w780$it" }
+        val fromList = images.map { "https://image.tmdb.org/t/p/w780$it" }
+        return buildList {
+            if (single != null) add(single)
+            addAll(fromList)
+        }.distinct().filter { it.isNotBlank() }
+    }
+
+    private fun formatRuntimeMinutes(minutes: Int?): String? {
+        if (minutes == null || minutes <= 0) return null
+        val hours = minutes / 60
+        val mins = minutes % 60
+        return if (hours > 0) "%d:%02d".format(hours, mins) else "%d min".format(mins)
+    }
+
+    private fun selectTrailerKey(videos: List<com.iptv.playxy.data.api.TmdbVideo>?): String? {
+        return videos
+            ?.filter { it.site.equals("YouTube", true) }
+            ?.sortedWith(
+                compareByDescending<com.iptv.playxy.data.api.TmdbVideo> { it.official == true }
+                    .thenByDescending { it.type.equals("Trailer", true) }
+            )
+            ?.firstOrNull()?.key
+    }
+
+    private suspend fun mergeVodInfoWithTmdb(
+        provider: VodInfo,
+        tmdb: TmdbMovieResponse,
+        collection: TmdbCollectionResponse?
+    ): VodInfo {
+        val backdropsFromImages = tmdb.images?.backdrops?.mapNotNull { it.filePath }.orEmpty()
+        val backdropList = when {
+            !provider.backdropPath.isNullOrEmpty() -> provider.backdropPath!!
+            !tmdb.backdropPath.isNullOrBlank() -> tmdbBackdropList(tmdb.backdropPath)
+            backdropsFromImages.isNotEmpty() -> tmdbBackdropList(null, backdropsFromImages)
+            else -> emptyList()
+        }
+        val poster = provider.movieImage ?: provider.coverBig ?: tmdbPosterUrl(tmdb.posterPath)
+        val trailer = provider.youtubeTrailer ?: selectTrailerKey(tmdb.videos?.results)
+        val director = provider.director
+            ?: tmdb.credits?.crew?.firstOrNull { it.job.equals("Director", true) }?.name
+        val cast = provider.cast ?: provider.actors
+            ?: tmdb.credits?.cast
+                ?.sortedBy { it.order ?: Int.MAX_VALUE }
+                ?.take(10)
+                ?.joinToString(",") { it.name.orEmpty() }
+
+        val genres = provider.genre ?: tmdb.genres
+            ?.mapNotNull { it.name }
+            ?.takeIf { it.isNotEmpty() }
+            ?.joinToString(" / ")
+
+        val rating5Based = provider.rating5Based ?: tmdb.voteAverage?.div(2.0)
+        val rating = provider.rating ?: tmdb.voteAverage?.toString()
+
+        val castList = tmdb.credits?.cast
+            ?.sortedBy { it.order ?: Int.MAX_VALUE }
+            ?.take(15)
+            ?.mapNotNull {
+                val name = it.name ?: return@mapNotNull null
+                com.iptv.playxy.domain.TmdbCast(
+                    id = it.id,
+                    name = name,
+                    character = it.character,
+                    profile = tmdbProfileUrl(it.profilePath)
+                )
+            }
+            ?: emptyList()
+
+        val allStreams = vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
+        val streamsByTmdb = allStreams.groupBy { it.tmdbId }
+
+        fun mapMovieLinks(
+            results: List<com.iptv.playxy.data.api.TmdbMovieResult>?,
+            includeUnavailable: Boolean
+        ): List<com.iptv.playxy.domain.TmdbMovieLink> {
+            val links = mutableListOf<com.iptv.playxy.domain.TmdbMovieLink>()
+            results.orEmpty().forEach { result ->
+                val id = result.id ?: return@forEach
+                val tmdbTitle = result.title ?: result.name ?: return@forEach
+                val poster = tmdbPosterUrl(result.posterPath)
+                val matches = streamsByTmdb[id.toString()].orEmpty()
+                val releaseDate = result.releaseDate
+                val overview = result.overview
+                val backdrop = tmdbBackdropUrl(result.backdropPath)
+                val rating = result.voteAverage
+                if (matches.isEmpty()) {
+                    if (includeUnavailable) {
+                        links += com.iptv.playxy.domain.TmdbMovieLink(
+                            tmdbId = id,
+                            title = tmdbTitle,
+                            poster = poster,
+                            availableStreamId = null,
+                            availableCategoryId = null,
+                            tmdbTitle = tmdbTitle,
+                            character = result.character,
+                            releaseDate = releaseDate,
+                            overview = overview,
+                            backdrop = backdrop,
+                            rating = rating
+                        )
+                    }
+                } else {
+                    matches.forEach { stream ->
+                        links += com.iptv.playxy.domain.TmdbMovieLink(
+                            tmdbId = id,
+                            title = stream.name,
+                            poster = stream.streamIcon ?: poster,
+                            availableStreamId = stream.streamId,
+                            availableCategoryId = stream.categoryId,
+                            tmdbTitle = tmdbTitle,
+                            character = result.character,
+                            releaseDate = releaseDate,
+                            overview = overview,
+                            backdrop = backdrop,
+                            rating = rating
+                        )
+                    }
+                }
+            }
+            return links.distinctBy { it.availableStreamId ?: "tmdb-${it.tmdbId}" }
+        }
+
+        val collectionLinks = if (collection != null) mapMovieLinks(collection.parts, includeUnavailable = true) else emptyList()
+        val similarLinks = mapMovieLinks(tmdb.similar?.results, includeUnavailable = false) +
+            mapMovieLinks(tmdb.recommendations?.results, includeUnavailable = false)
+
+        // Variantes locales con mismo TMDB que la película actual
+        val localVariants = streamsByTmdb[provider.tmdbId]?.map { stream ->
+            com.iptv.playxy.domain.TmdbMovieLink(
+                tmdbId = provider.tmdbId?.toIntOrNull() ?: tmdb.id ?: -1,
+                title = stream.name,
+                poster = stream.streamIcon ?: provider.movieImage ?: provider.coverBig,
+                availableStreamId = stream.streamId,
+                availableCategoryId = stream.categoryId,
+                tmdbTitle = tmdb.title ?: provider.name,
+                character = null,
+                releaseDate = tmdb.releaseDate ?: provider.releaseDate,
+                overview = tmdb.overview ?: provider.plot,
+                backdrop = tmdbBackdropUrl(tmdb.backdropPath)
+            )
+        }.orEmpty()
+
+        fun releaseDateKey(date: String?): Long =
+            date?.let {
+                runCatching { LocalDate.parse(it).toEpochDay() }.getOrNull()
+            } ?: Long.MAX_VALUE
+
+        return provider.copy(
+            name = provider.name.ifBlank { tmdb.title.orEmpty() },
+            originalName = provider.originalName ?: tmdb.originalTitle ?: tmdb.title,
+            coverBig = provider.coverBig ?: tmdbPosterUrl(tmdb.posterPath),
+            movieImage = poster,
+            releaseDate = provider.releaseDate ?: tmdb.releaseDate,
+            duration = provider.duration ?: formatRuntimeMinutes(tmdb.runtime),
+            durationSecs = provider.durationSecs ?: tmdb.runtime?.times(60),
+            youtubeTrailer = trailer,
+            director = director,
+            cast = cast,
+            description = provider.description ?: tmdb.overview,
+            plot = provider.plot ?: tmdb.overview,
+            rating = rating,
+            rating5Based = rating5Based,
+            genre = genres,
+            backdropPath = backdropList.ifEmpty { null },
+            tmdbCast = castList,
+            tmdbCollection = (collectionLinks + localVariants)
+                .distinctBy { it.availableStreamId ?: "tmdb-${it.tmdbId}" }
+                .sortedWith(compareBy<com.iptv.playxy.domain.TmdbMovieLink> { releaseDateKey(it.releaseDate) }
+                    .thenBy { it.tmdbTitle ?: it.title }),
+            tmdbSimilar = similarLinks.filter { it.availableStreamId != null }
+        )
+    }
+
+    private fun mergeSeriesInfoWithTmdb(seriesInfo: SeriesInfo, tmdb: TmdbSeriesResponse): SeriesInfo {
+        val provider = seriesInfo.info
+        val backdropsFromImages = tmdb.images?.backdrops?.mapNotNull { it.filePath }.orEmpty()
+        val backdropList = when {
+            provider.backdropPath.isNotEmpty() -> provider.backdropPath
+            !tmdb.backdropPath.isNullOrBlank() -> tmdbBackdropList(tmdb.backdropPath)
+            backdropsFromImages.isNotEmpty() -> tmdbBackdropList(null, backdropsFromImages)
+            else -> emptyList()
+        }
+        val poster = provider.cover ?: tmdbPosterUrl(tmdb.posterPath)
+        val trailer = provider.youtubeTrailer ?: selectTrailerKey(tmdb.videos?.results)
+        val director = provider.director
+            ?: tmdb.credits?.crew?.firstOrNull { it.job.equals("Director", true) }?.name
+        val cast = provider.cast
+            ?: tmdb.credits?.cast
+                ?.sortedBy { it.order ?: Int.MAX_VALUE }
+                ?.take(10)
+                ?.joinToString(",") { it.name.orEmpty() }
+
+        val genres = provider.genre ?: tmdb.genres
+            ?.mapNotNull { it.name }
+            ?.takeIf { it.isNotEmpty() }
+            ?.joinToString(" / ")
+
+        val rating5Based = provider.rating5Based.takeIf { it > 0 } ?: tmdb.voteAverage?.div(2.0)?.toFloat()
+        val rating = provider.rating.takeIf { it > 0f } ?: tmdb.voteAverage?.toFloat()
+
+        val mergedSeries = provider.copy(
+            name = provider.name.ifBlank { tmdb.name.orEmpty() },
+            plot = provider.plot ?: tmdb.overview,
+            cast = cast ?: provider.cast,
+            director = director,
+            genre = genres,
+            releaseDate = provider.releaseDate ?: tmdb.firstAirDate,
+            rating = rating ?: provider.rating,
+            rating5Based = rating5Based ?: provider.rating5Based,
+            backdropPath = backdropList,
+            youtubeTrailer = trailer,
+            episodeRunTime = provider.episodeRunTime ?: tmdb.episodeRunTime?.firstOrNull()?.toString(),
+            cover = poster,
+            tmdbId = provider.tmdbId ?: tmdb.id?.toString(),
+            lastModified = provider.lastModified
+        )
+
+        return seriesInfo.copy(info = mergedSeries)
+    }
+
     suspend fun getCategories(type: String): List<Category> {
         return categoryDao.getCategoriesByType(type).map { EntityMapper.categoryToDomain(it) }
     }
@@ -576,6 +999,8 @@ class IptvRepository @Inject constructor(
      * @return SeriesInfo with seasons and episodes, or null if error
      */
     suspend fun getSeriesInfo(seriesId: String): SeriesInfo? {
+        val useTmdb = isTmdbEnabled()
+        getCachedSeriesInfo(seriesId, useTmdb)?.let { return it }
         return try {
             // Get the user profile to obtain credentials and base URL
             val profile = userProfileDao.getProfile() ?: return null
@@ -595,7 +1020,12 @@ class IptvRepository @Inject constructor(
             )
 
             if (response.isSuccessful && response.body() != null) {
-                ResponseMapper.toSeriesInfo(response.body()!!, series)
+                val providerInfo = ResponseMapper.toSeriesInfo(response.body()!!, series)
+                val merged = if (useTmdb && !providerInfo.info.tmdbId.isNullOrBlank()) {
+                    val tmdbResponse = fetchTmdbSeries(providerInfo.info.tmdbId!!)
+                    if (tmdbResponse != null) mergeSeriesInfoWithTmdb(providerInfo, tmdbResponse) else providerInfo
+                } else providerInfo
+                merged.also { cacheSeriesInfo(seriesId, it, useTmdb) }
             } else {
                 // Return empty series info if API call fails
                 SeriesInfo(
@@ -614,6 +1044,8 @@ class IptvRepository @Inject constructor(
      * Get detailed VOD information from the provider
      */
     suspend fun getVodInfo(vodId: String): VodInfo? {
+        val useTmdb = isTmdbEnabled()
+        getCachedVodInfo(vodId, useTmdb)?.let { return it }
         return try {
             // Get the user profile to obtain credentials and base URL
             val profile = userProfileDao.getProfile() ?: return null
@@ -629,7 +1061,13 @@ class IptvRepository @Inject constructor(
             )
 
             if (response.isSuccessful && response.body() != null) {
-                ResponseMapper.toVodInfo(response.body()!!)
+                val providerInfo = ResponseMapper.toVodInfo(response.body()!!)
+                val merged = if (useTmdb && providerInfo != null && !providerInfo.tmdbId.isNullOrBlank()) {
+                    val tmdbResponse = fetchTmdbMovie(providerInfo.tmdbId!!)
+                    val collection = tmdbResponse?.belongsToCollection?.id?.let { fetchTmdbCollection(it) }
+                    if (tmdbResponse != null) mergeVodInfoWithTmdb(providerInfo, tmdbResponse, collection) else providerInfo
+                } else providerInfo
+                merged?.also { cacheVodInfo(vodId, it, useTmdb) }
             } else {
                 null
             }
@@ -639,6 +1077,25 @@ class IptvRepository @Inject constructor(
         }
     }
 }
+
+private data class CachedVodInfo(
+    val info: VodInfo,
+    val timestamp: Long,
+    val usesTmdb: Boolean
+)
+
+private data class CachedSeriesInfo(
+    val info: SeriesInfo,
+    val timestamp: Long,
+    val usesTmdb: Boolean
+)
+
+private data class CachedActorDetails(
+    val details: com.iptv.playxy.domain.ActorDetails,
+    val timestamp: Long
+)
+
+private const val TMDB_API_KEY = "0a82c6ff2b4b130f83facf56ae9a89b1"
 
 enum class ContentLoadStage {
     CONNECTING,

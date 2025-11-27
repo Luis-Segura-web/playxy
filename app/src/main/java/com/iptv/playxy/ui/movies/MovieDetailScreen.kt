@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -26,6 +27,8 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -86,6 +89,10 @@ import kotlinx.coroutines.launch
 fun MovieDetailScreen(
     movie: VodStream,
     onBackClick: () -> Unit,
+    onNavigateToMovie: (String, String) -> Unit = { _, _ -> },
+    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast) -> Unit = {},
+    showHomeButton: Boolean = false,
+    onNavigateHome: () -> Unit = {},
     viewModel: MoviesViewModel = hiltViewModel()
 ) {
     var isPlaying by remember { mutableStateOf(false) }
@@ -104,6 +111,8 @@ fun MovieDetailScreen(
     var accessGranted by remember { mutableStateOf(false) }
     var gatePin by remember { mutableStateOf("") }
     var recentRegistered by remember { mutableStateOf(false) }
+    var unavailableMovieInfo by remember { mutableStateOf<com.iptv.playxy.domain.TmdbMovieLink?>(null) }
+    val tmdbEnabled = uiState.tmdbEnabled
 
     // Load movie details when screen opens
     LaunchedEffect(movie.streamId) {
@@ -133,6 +142,12 @@ fun MovieDetailScreen(
     val isInPip by pipController.isInPip.collectAsStateWithLifecycle()
 
     val shouldShowHeaderPlayer = isPlaying && userProfile != null
+    val movieInfo = uiState.selectedMovieInfo
+    val headerImageUrl = movieInfo?.backdropPath?.firstOrNull()?.takeIf { it.isNotBlank() }
+        ?: movieInfo?.movieImage
+        ?: movie.streamIcon
+    val displayTitle = movieInfo?.name?.takeIf { it.isNotBlank() } ?: movie.name
+    val ratingValue = movieInfo?.rating5Based?.toFloat()?.takeIf { it > 0f } ?: movie.rating5Based
 
     DisposableEffect(isPlaying, isFullscreen) {
         playerManager.setTransportActions(null, null)
@@ -293,7 +308,7 @@ fun MovieDetailScreen(
     } else if (isFullscreen && userProfile != null && currentStreamUrl != null) {
         FullscreenPlayer(
             streamUrl = currentStreamUrl,
-            title = movie.name,
+            title = displayTitle,
             playerType = PlayerType.MOVIE,
             playerManager = playerManager,
             onBack = { fullscreenState.value = false }
@@ -320,7 +335,7 @@ fun MovieDetailScreen(
                     if (shouldShowHeaderPlayer && currentStreamUrl != null) {
                         MovieMiniPlayer(
                             streamUrl = currentStreamUrl,
-                            movieTitle = movie.name,
+                            movieTitle = displayTitle,
                             playerManager = playerManager,
                             onClose = {
                                 playerManager.stopPlayback()
@@ -334,8 +349,8 @@ fun MovieDetailScreen(
                         )
                     } else {
                         AsyncImage(
-                            model = movie.streamIcon,
-                            contentDescription = movie.name,
+                            model = headerImageUrl,
+                            contentDescription = displayTitle,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                             error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_report_image),
@@ -376,6 +391,23 @@ fun MovieDetailScreen(
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
+                        if (showHomeButton) {
+                            IconButton(
+                                onClick = onNavigateHome,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(12.dp),
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Home,
+                                    contentDescription = "Inicio",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -397,7 +429,7 @@ fun MovieDetailScreen(
                             var reductionCount by remember { mutableIntStateOf(0) }
                             
                             Text(
-                                text = movie.name,
+                                text = displayTitle,
                                 fontSize = fontSize,
                                 color = MaterialTheme.colorScheme.onBackground,
                                 fontWeight = FontWeight.Bold,
@@ -419,7 +451,7 @@ fun MovieDetailScreen(
                                 // Estrellas
                                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                     repeat(5) { index ->
-                                        val filled = movie.rating5Based >= index + 1
+                                        val filled = ratingValue >= index + 1
                                         Icon(
                                             imageVector = Icons.Default.Star,
                                             contentDescription = null,
@@ -544,7 +576,6 @@ fun MovieDetailScreen(
                         }
                     }
 
-                    val movieInfo = uiState.selectedMovieInfo
                     val description = movieInfo?.plot ?: movieInfo?.description
                     if (!description.isNullOrEmpty()) {
                         Column {
@@ -569,7 +600,65 @@ fun MovieDetailScreen(
                         InfoRow(label = "Director: ", value = movieInfo?.director ?: "—")
                     }
 
-                    if (!movieInfo?.cast.isNullOrEmpty()) {
+                    val tmdbEnabled = uiState.tmdbEnabled
+                    if (tmdbEnabled && !movieInfo?.tmdbCast.isNullOrEmpty()) {
+                        Text(
+                            text = "Reparto & Equipo",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp)
+                        ) {
+                            items(movieInfo?.tmdbCast ?: emptyList()) { cast ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .width(90.dp)
+                                        .clickable {
+                                            onNavigateToActor(cast)
+                                        }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(70.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    ) {
+                                        AsyncImage(
+                                            model = cast.profile,
+                                            contentDescription = cast.name,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop,
+                                            error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_report_image),
+                                            placeholder = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = cast.name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (!cast.character.isNullOrBlank()) {
+                                        Text(
+                                            text = cast.character,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else if (!movieInfo?.cast.isNullOrEmpty()) {
                         Text(
                             text = "Reparto & Equipo",
                             style = MaterialTheme.typography.titleMedium,
@@ -612,9 +701,64 @@ fun MovieDetailScreen(
                             }
                         }
                     }
+
+                    val collectionItems = movieInfo?.tmdbCollection ?: emptyList()
+                    if (tmdbEnabled && collectionItems.size > 1) {
+                        Text(
+                            text = "Colección relacionada",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(collectionItems) { item ->
+                                CollectionCard(
+                                    item = item,
+                                    showUnavailableChip = item.availableStreamId == null,
+                                    isCurrent = item.availableStreamId == movie.streamId,
+                                    onClick = { link ->
+                                        if (link.availableStreamId != null && link.availableCategoryId != null) {
+                                            onNavigateToMovie(link.availableStreamId, link.availableCategoryId)
+                                        } else {
+                                            unavailableMovieInfo = link
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (tmdbEnabled && !movieInfo?.tmdbSimilar.isNullOrEmpty()) {
+                        Text(
+                            text = "Contenido similar",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(movieInfo?.tmdbSimilar ?: emptyList()) { item ->
+                                CollectionCard(
+                                    item = item,
+                                    showUnavailableChip = false,
+                                    onClick = { link ->
+                                        if (link.availableStreamId != null && link.availableCategoryId != null) {
+                                            onNavigateToMovie(link.availableStreamId, link.availableCategoryId)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+
+    unavailableMovieInfo?.let { info ->
+        UnavailableMovieDialog(
+            item = info,
+            onDismiss = { unavailableMovieInfo = null }
+        )
     }
 }
 
@@ -642,3 +786,175 @@ fun InfoRow(
 }
 
 private fun sanitizePinInput(input: String): String = input.filter { it.isDigit() }.take(4)
+
+@Composable
+private fun CollectionCard(
+    item: com.iptv.playxy.domain.TmdbMovieLink,
+    showUnavailableChip: Boolean,
+    isCurrent: Boolean = false,
+    onClick: (com.iptv.playxy.domain.TmdbMovieLink) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(140.dp)
+            .clickable { onClick(item) },
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            AsyncImage(
+                model = item.poster,
+                contentDescription = item.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_report_image),
+                placeholder = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
+            )
+            if (isCurrent) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .padding(6.dp)
+                        .align(Alignment.TopStart)
+                ) {
+                    Text(
+                        text = "Actual",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            if (showUnavailableChip && item.availableStreamId == null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .padding(6.dp)
+                        .align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        text = "No disponible",
+                        color = MaterialTheme.colorScheme.onError,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 5,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun UnavailableMovieDialog(
+    item: com.iptv.playxy.domain.TmdbMovieLink,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            tonalElevation = 4.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = item.tmdbTitle ?: item.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        AsyncImage(
+                            model = item.poster ?: item.backdrop,
+                            contentDescription = item.tmdbTitle ?: item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_report_image),
+                            placeholder = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (!item.releaseDate.isNullOrBlank()) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "No disponible · ${item.releaseDate.take(4)}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        } else {
+                            Surface(
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "No disponible",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        if (!item.overview.isNullOrBlank()) {
+                            Text(
+                                text = item.overview,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 12,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (!item.tmdbTitle.isNullOrBlank() && item.tmdbTitle != item.title) {
+                            Text(
+                                text = "Título TMDB: ${item.tmdbTitle}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

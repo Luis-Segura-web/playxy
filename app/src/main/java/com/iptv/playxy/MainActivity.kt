@@ -28,6 +28,7 @@ import com.iptv.playxy.ui.Routes
 import com.iptv.playxy.ui.loading.LoadingScreen
 import com.iptv.playxy.ui.login.LoginScreen
 import com.iptv.playxy.ui.main.MainScreen
+import com.iptv.playxy.ui.movies.ActorDetailScreen
 import com.iptv.playxy.ui.movies.MovieDetailScreen
 import com.iptv.playxy.ui.series.SeriesDetailScreen
 import com.iptv.playxy.ui.splash.SplashScreen
@@ -167,11 +168,16 @@ fun PlayxyNavigation(repository: IptvRepository) {
             route = Routes.MOVIE_DETAIL,
             arguments = listOf(
                 navArgument("streamId") { type = NavType.StringType },
-                navArgument("categoryId") { type = NavType.StringType }
+                navArgument("categoryId") { type = NavType.StringType },
+                navArgument("fromLink") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                }
             )
         ) { backStackEntry ->
             val streamId = backStackEntry.arguments?.getString("streamId") ?: ""
             val categoryId = backStackEntry.arguments?.getString("categoryId") ?: ""
+            val fromLink = backStackEntry.arguments?.getBoolean("fromLink") ?: false
 
             val movie = remember { mutableStateOf<VodStream?>(null) }
 
@@ -185,9 +191,43 @@ fun PlayxyNavigation(repository: IptvRepository) {
             movie.value?.let { vodStream ->
                 MovieDetailScreen(
                     movie = vodStream,
-                    onBackClick = { navController.popBackStack() }
+                    onBackClick = { navController.popBackStack() },
+                    onNavigateToMovie = { toStreamId, toCategoryId ->
+                        navController.navigate(Routes.movieDetail(toStreamId, toCategoryId, true))
+                    },
+                    onNavigateToActor = { cast ->
+                        navController.navigate(Routes.actorDetail(cast))
+                    },
+                    showHomeButton = fromLink,
+                    onNavigateHome = {
+                        navController.popBackStack(Routes.MAIN, inclusive = false)
+                    }
                 )
             }
+        }
+
+        composable(
+            route = Routes.ACTOR_DETAIL,
+            arguments = listOf(
+                navArgument("actorId") { type = NavType.StringType },
+                navArgument("actorName") { type = NavType.StringType; defaultValue = "" },
+                navArgument("actorProfile") { type = NavType.StringType; defaultValue = "" }
+            )
+        ) { backStackEntry ->
+            val actorId = backStackEntry.arguments?.getString("actorId")?.toIntOrNull() ?: -1
+            val actorName = backStackEntry.arguments?.getString("actorName")?.let { android.net.Uri.decode(it) } ?: ""
+            val actorProfile = backStackEntry.arguments?.getString("actorProfile")?.let { android.net.Uri.decode(it) } ?: ""
+            ActorDetailScreen(
+                actorId = actorId,
+                fallbackName = actorName,
+                fallbackProfile = actorProfile,
+                onBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToMovie = { toStreamId, toCategoryId ->
+                    navController.navigate(Routes.movieDetail(toStreamId, toCategoryId, true))
+                }
+            )
         }
 
         composable(

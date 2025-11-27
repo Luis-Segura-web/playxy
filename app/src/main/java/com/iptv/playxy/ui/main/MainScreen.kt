@@ -723,6 +723,44 @@ fun SettingsContent(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Datos de TMDB", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = "Usa TMDB para completar portadas, backdrops y metadatos cuando haya ID TMDB.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = uiState.tmdbEnabled,
+                            onCheckedChange = { enabled -> viewModel.toggleTmdb(enabled) }
+                        )
+                    }
+                    Text(
+                        text = "No se buscará por nombre; solo se usa cuando el proveedor envía el ID TMDB.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 2.dp,
+                shadowElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Text(
                         text = "Sincronización de contenido",
                         style = MaterialTheme.typography.titleMedium

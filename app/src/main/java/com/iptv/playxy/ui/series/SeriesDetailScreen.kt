@@ -102,6 +102,24 @@ fun SeriesDetailScreen(
     val isInPip by pipController.isInPip.collectAsStateWithLifecycle()
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var isEpisodeSwitching by remember { mutableStateOf(false) }
+    val series = uiState.series
+    val seriesBackdrop = series?.backdropPath?.firstOrNull()?.takeIf { it.isNotBlank() }
+    val lastEpisodeCover = uiState.lastEpisode?.info?.cover
+    val firstEpisodeCover = uiState.seasons.values.flatten()
+        .firstOrNull { !it.info?.cover.isNullOrBlank() }
+        ?.info?.cover
+    val headerSources = remember(seriesBackdrop, lastEpisodeCover, firstEpisodeCover, series?.cover) {
+        listOfNotNull(
+            seriesBackdrop,
+            lastEpisodeCover,
+            firstEpisodeCover,
+            series?.cover
+        ).distinct()
+    }
+    var headerSourceIndex by remember(headerSources) { mutableIntStateOf(0) }
+    val headerImageUrl = headerSources.getOrNull(headerSourceIndex)
+    val displayTitle = series?.name.orEmpty()
+    val ratingValue = series?.rating5Based ?: 0f
 
     // Load series info when screen opens
     LaunchedEffect(seriesId, categoryId, seriesListUi.categories) {
@@ -350,7 +368,7 @@ fun SeriesDetailScreen(
         // Fullscreen player in landscape mode
         FullscreenPlayer(
             streamUrl = currentStreamUrl,
-            title = "${uiState.series?.name} - T${currentEpisode!!.season} E${currentEpisode!!.episodeNum}",
+            title = "${displayTitle.ifBlank { uiState.series?.name.orEmpty() }} - T${currentEpisode!!.season} E${currentEpisode!!.episodeNum}",
             playerType = PlayerType.SERIES,
             playerManager = playerManager,
             onBack = {
@@ -454,10 +472,15 @@ fun SeriesDetailScreen(
                         )
                     } else if (series != null) {
                         AsyncImage(
-                            model = series.cover,
-                            contentDescription = series.name,
+                            model = headerImageUrl,
+                            contentDescription = displayTitle.ifBlank { series.name },
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
+                            onError = {
+                                if (headerSourceIndex < headerSources.lastIndex) {
+                                    headerSourceIndex += 1
+                                }
+                            },
                             error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_report_image),
                             placeholder = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
                         )
@@ -529,7 +552,7 @@ fun SeriesDetailScreen(
                                 var reductionCount by remember { mutableIntStateOf(0) }
                                 
                                 Text(
-                                    text = series.name,
+                                    text = displayTitle.ifBlank { series.name },
                                     fontSize = fontSize,
                                     color = MaterialTheme.colorScheme.onBackground,
                                     fontWeight = FontWeight.Bold,
@@ -551,7 +574,7 @@ fun SeriesDetailScreen(
                                     // Stars
                                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                         repeat(5) { index ->
-                                            val filled = series.rating5Based >= index + 1
+                                            val filled = ratingValue >= index + 1
                                             Icon(
                                                 imageVector = Icons.Default.Star,
                                                 contentDescription = null,

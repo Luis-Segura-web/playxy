@@ -29,6 +29,12 @@ class PreferencesManager @Inject constructor(
         prefs.edit().putString(KEY_PARENTAL_PIN, pin).apply()
     }
 
+    fun isTmdbEnabled(): Boolean = prefs.getBoolean(KEY_TMDB_ENABLED, false)
+
+    fun setTmdbEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TMDB_ENABLED, enabled).apply()
+    }
+
     fun getBlockedCategories(type: String): Set<String> {
         val key = when (type) {
             "live" -> KEY_BLOCKED_LIVE
@@ -54,6 +60,7 @@ class PreferencesManager @Inject constructor(
         private const val KEY_RECENTS_LIMIT = "recents_limit"
         private const val KEY_PARENTAL_ENABLED = "parental_enabled"
         private const val KEY_PARENTAL_PIN = "parental_pin"
+        private const val KEY_TMDB_ENABLED = "tmdb_enabled"
         private const val KEY_BLOCKED_LIVE = "blocked_live_categories"
         private const val KEY_BLOCKED_VOD = "blocked_vod_categories"
         private const val KEY_BLOCKED_SERIES = "blocked_series_categories"
