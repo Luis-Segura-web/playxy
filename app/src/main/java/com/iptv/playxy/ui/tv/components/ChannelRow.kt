@@ -1,29 +1,26 @@
 package com.iptv.playxy.ui.tv.components
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarOutline
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.outlined.Tv
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -41,86 +38,198 @@ fun ChannelRow(
     onFavoriteClick: (LiveStream) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    
+    // Animaciones
+    val scale by animateFloatAsState(
+        targetValue = if (isPlaying) 1.02f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "scale"
+    )
+    
+    val borderWidth by animateDpAsState(
+        targetValue = if (isPlaying) 2.dp else 0.dp,
+        animationSpec = tween(300),
+        label = "border"
+    )
+    
+    val containerColor by animateColorAsState(
+        targetValue = if (isPlaying) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        },
+        animationSpec = tween(300),
+        label = "color"
+    )
+    
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onChannelClick(channel) }
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(14.dp),
-        tonalElevation = if (isPlaying) 8.dp else 2.dp,
-        shadowElevation = 0.dp,
-        color = if (isPlaying) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
+            .scale(scale)
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = if (isPlaying) 4.dp else 0.dp,
+        shadowElevation = if (isPlaying) 8.dp else 0.dp,
+        color = containerColor,
         border = if (isPlaying) {
-            androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            androidx.compose.foundation.BorderStroke(
+                borderWidth,
+                MaterialTheme.colorScheme.primary
+            )
         } else null
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null
+                ) { onChannelClick(channel) }
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Channel logo
-            Box {
-                AsyncImage(
-                    model = channel.streamIcon,
-                    contentDescription = channel.name,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop,
-                    error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery),
-                    placeholder = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
-                )
+            // Channel logo con efecto de reproducción
+            Box(modifier = Modifier.size(56.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    AsyncImage(
+                        model = channel.streamIcon,
+                        contentDescription = channel.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        error = androidx.compose.ui.res.painterResource(
+                            android.R.drawable.ic_menu_gallery
+                        ),
+                        placeholder = androidx.compose.ui.res.painterResource(
+                            android.R.drawable.ic_menu_gallery
+                        )
+                    )
+                }
 
-                // Playing indicator
+                // Indicador de reproducción
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isPlaying,
+                    enter = scaleIn() + fadeIn(),
+                    exit = scaleOut() + fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Reproduciendo",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(16.dp)
+                        )
+                    }
+                }
+                
+                // Borde de reproducción en el logo
                 if (isPlaying) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Reproduciendo",
-                        tint = MaterialTheme.colorScheme.primary,
+                    Box(
                         modifier = Modifier
-                            .size(20.dp)
-                            .align(Alignment.BottomEnd)
-                            .background(
-                                color = MaterialTheme.colorScheme.surface,
-                                shape = CircleShape
+                            .matchParentSize()
+                            .border(
+                                width = 2.dp,
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.tertiary
+                                    )
+                                ),
+                                shape = RoundedCornerShape(12.dp)
                             )
-                            .padding(2.dp)
                     )
                 }
             }
 
-            // Channel name
-            Text(
-                text = channel.name,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium
-                ),
-                color = if (isPlaying) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
+            // Channel info
+            Column(
                 modifier = Modifier.weight(1f),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.size(4.dp))
-
-            // Favorite button
-            IconButton(onClick = { onFavoriteClick(channel) }) {
-                Icon(
-                    imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
-                    contentDescription = if (isFavorite) "Quitar de favoritos" else "Agregar a favoritos",
-                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = channel.name,
+                    style = if (isPlaying) {
+                        MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Medium
+                        )
+                    },
+                    color = if (isPlaying) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
+                
+                // Estado
+                AnimatedVisibility(
+                    visible = isPlaying,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                        Text(
+                            text = "En reproducción",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            // Favorito moderno
+            Surface(
+                onClick = { onFavoriteClick(channel) },
+                shape = CircleShape,
+                color = if (isFavorite) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                        contentDescription = if (isFavorite) "Quitar de favoritos" else "Agregar a favoritos",
+                        tint = if (isFavorite) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
     }

@@ -1,26 +1,34 @@
 package com.iptv.playxy.ui.settings
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.iptv.playxy.ui.main.sanitizePin
@@ -59,10 +67,21 @@ fun ModernSettingsScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp, start = 16.dp, end = 16.dp),
+                snackbar = { data ->
+                    Snackbar(
+                        snackbarData = data,
+                        shape = RoundedCornerShape(12.dp),
+                        containerColor = MaterialTheme.colorScheme.inverseSurface,
+                        contentColor = MaterialTheme.colorScheme.inverseOnSurface
+                    )
+                }
             )
         }
     ) { paddingValues ->
@@ -70,11 +89,13 @@ fun ModernSettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .consumeWindowInsets(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(vertical = 16.dp, horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            AccountCard(
+            // Account Card rediseñado
+            MinimalistAccountCard(
                 name = uiState.profileName.ifBlank { uiState.username.ifBlank { "Usuario IPTV" } },
                 username = uiState.username,
                 server = uiState.serverUrl,
@@ -83,119 +104,159 @@ fun ModernSettingsScreen(
                 status = uiState.status
             )
 
-            // Content & Sync Section
-            SettingsSection(
-                title = "Contenido y Sincronización",
-                icon = Icons.Default.CloudSync
+            // Contenido y Sincronización
+            MinimalistSection(
+                title = "Contenido",
+                icon = Icons.Outlined.CloudSync
             ) {
-                SettingCard(
+                MinimalistSettingItem(
                     title = "Datos de TMDB",
-                    description = "Obtener imágenes y metadatos de películas y series desde TMDB",
-                    icon = Icons.Default.Image,
+                    subtitle = "Imágenes y metadatos de películas",
+                    icon = Icons.Outlined.Image,
                     trailing = {
-                        Switch(
+                        MinimalistSwitch(
                             checked = uiState.tmdbEnabled,
                             onCheckedChange = { viewModel.toggleTmdb(it) }
                         )
                     }
                 )
-
-                SettingCard(
-                    title = "Forzar recarga de contenido",
-                    description = "Actualizar todo el contenido desde el servidor",
-                    icon = Icons.Default.Refresh,
-                    onClick = onForceReload
+                
+                Divider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                )
+                
+                MinimalistSettingItem(
+                    title = "Actualizar contenido",
+                    subtitle = "Recargar desde el servidor",
+                    icon = Icons.Outlined.Refresh,
+                    onClick = onForceReload,
+                    showArrow = true
                 )
             }
 
-            // Recent History Section
-            SettingsSection(
-                title = "Historial Reciente",
-                icon = Icons.Default.History
+            // Historial
+            MinimalistSection(
+                title = "Historial",
+                icon = Icons.Outlined.History
             ) {
-                SettingCard(
-                    title = "Límite de elementos recientes",
-                    description = "Cantidad máxima de elementos en el historial",
-                    icon = Icons.Default.Numbers
+                var expanded by remember { mutableStateOf(false) }
+                
+                MinimalistSettingItem(
+                    title = "Límite de recientes",
+                    subtitle = "${uiState.recentsLimit} elementos",
+                    icon = Icons.Outlined.Numbers,
+                    onClick = { expanded = !expanded },
+                    showArrow = true
+                )
+                
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
                 ) {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
                         OutlinedTextField(
                             value = uiState.recentsLimitInput,
                             onValueChange = { viewModel.onRecentsLimitInputChange(it) },
-                            label = { Text("Límite") },
+                            label = { Text("Cantidad") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                            ),
                             trailingIcon = {
-                                IconButton(onClick = { viewModel.saveRecentsLimit() }) {
+                                IconButton(
+                                    onClick = { viewModel.saveRecentsLimit() },
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                        .size(32.dp)
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = "Guardar",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
                         )
                     }
                 }
-
-                SettingCard(
+                
+                Divider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                )
+                
+                var cleanExpanded by remember { mutableStateOf(false) }
+                
+                MinimalistSettingItem(
                     title = "Limpiar historial",
-                    description = "Eliminar elementos del historial reciente",
-                    icon = Icons.Default.DeleteSweep
+                    subtitle = "Eliminar elementos recientes",
+                    icon = Icons.Outlined.DeleteSweep,
+                    onClick = { cleanExpanded = !cleanExpanded },
+                    showArrow = true
+                )
+                
+                AnimatedVisibility(
+                    visible = cleanExpanded,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
                 ) {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 12.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ClearHistoryButton(
-                            text = "Limpiar canales recientes",
+                        MinimalistButton(
+                            text = "Canales",
+                            icon = Icons.Outlined.Tv,
                             onClick = { viewModel.clearRecentChannels() }
                         )
-                        ClearHistoryButton(
-                            text = "Limpiar películas recientes",
+                        MinimalistButton(
+                            text = "Películas",
+                            icon = Icons.Outlined.Movie,
                             onClick = { viewModel.clearRecentMovies() }
                         )
-                        ClearHistoryButton(
-                            text = "Limpiar series recientes",
+                        MinimalistButton(
+                            text = "Series",
+                            icon = Icons.Outlined.Theaters,
                             onClick = { viewModel.clearRecentSeries() }
                         )
-                        OutlinedButton(
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        MinimalistButton(
+                            text = "Limpiar todo",
+                            icon = Icons.Outlined.DeleteForever,
                             onClick = { viewModel.clearAllRecents() },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error
-                            ),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(
-                                brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error)
-                            )
-                        ) {
-                            Icon(imageVector = Icons.Default.DeleteForever, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Limpiar todo el historial")
-                        }
+                            danger = true
+                        )
                     }
                 }
             }
 
-            // Parental Control Section
-            SettingsSection(
-                title = "Control Parental",
-                icon = Icons.Default.ChildCare
+            // Control Parental
+            MinimalistSection(
+                title = "Seguridad",
+                icon = Icons.Outlined.Shield
             ) {
-                SettingCard(
+                MinimalistSettingItem(
                     title = "Control parental",
-                    description = if (uiState.parentalEnabled) {
-                        "Activo - Protegido con PIN de 4 dígitos"
-                    } else {
-                        "Inactivo - Proteger contenido con PIN"
-                    },
-                    icon = if (uiState.parentalEnabled) Icons.Default.Lock else Icons.Default.LockOpen,
+                    subtitle = if (uiState.parentalEnabled) "Activo con PIN" else "Desactivado",
+                    icon = if (uiState.parentalEnabled) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
                     trailing = {
-                        Switch(
+                        MinimalistSwitch(
                             checked = uiState.parentalEnabled,
                             onCheckedChange = { checked ->
                                 coroutineScope.launch {
@@ -234,12 +295,21 @@ fun ModernSettingsScreen(
                     }
                 )
 
-                AnimatedVisibility(visible = uiState.parentalEnabled || uiState.isSaving) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SettingCard(
+                AnimatedVisibility(
+                    visible = uiState.parentalEnabled || uiState.isSaving,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column {
+                        Divider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                        
+                        MinimalistSettingItem(
                             title = "Cambiar PIN",
-                            description = "Actualizar el código de seguridad",
-                            icon = Icons.Default.Key,
+                            subtitle = "Actualizar código de seguridad",
+                            icon = Icons.Outlined.Key,
                             onClick = {
                                 coroutineScope.launch {
                                     if (viewModel.hasPinConfigured()) {
@@ -250,13 +320,19 @@ fun ModernSettingsScreen(
                                         showPinSetup = true
                                     }
                                 }
-                            }
+                            },
+                            showArrow = true
                         )
 
-                        SettingCard(
+                        Divider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+
+                        MinimalistSettingItem(
                             title = "Categorías ocultas",
-                            description = "Gestionar categorías bloqueadas por el control parental",
-                            icon = Icons.Default.VisibilityOff,
+                            subtitle = "Gestionar contenido bloqueado",
+                            icon = Icons.Outlined.VisibilityOff,
                             onClick = {
                                 coroutineScope.launch {
                                     pinPromptError = null
@@ -272,7 +348,8 @@ fun ModernSettingsScreen(
                                         showHiddenCategories = true
                                     }
                                 }
-                            }
+                            },
+                            showArrow = true
                         )
                     }
                 }
@@ -281,94 +358,36 @@ fun ModernSettingsScreen(
                     LinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Logout Section
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showLogoutDialog = true }
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Cerrar sesión",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Text(
-                            text = "Salir de tu cuenta actual",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
+            // Logout minimalista
+            MinimalistLogoutButton(
+                onClick = { showLogoutDialog = true }
+            )
         }
     }
 
-    // Dialogs
+    // Dialogs modernizados
     if (showLogoutDialog) {
-        AlertDialog(
-            onDismissRequest = { showLogoutDialog = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Logout,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { Text("¿Cerrar sesión?") },
-            text = { Text("Se borrarán todos los datos locales y deberás iniciar sesión nuevamente.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showLogoutDialog = false
-                        onLogout()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Cerrar sesión")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Cancelar")
-                }
+        ModernLogoutDialog(
+            onDismiss = { showLogoutDialog = false },
+            onConfirm = {
+                showLogoutDialog = false
+                onLogout()
             }
         )
     }
 
     if (showPinSetup) {
-        PinSetupDialog(
+        ModernPinSetupDialog(
             onDismiss = {
                 showPinSetup = false
                 enableAfterPinSave = false
@@ -389,7 +408,7 @@ fun ModernSettingsScreen(
     }
 
     if (showPinPromptFor != null) {
-        PinPromptDialog(
+        ModernPinPromptDialog(
             purpose = showPinPromptFor!!,
             error = pinPromptError,
             onDismiss = {
@@ -415,7 +434,7 @@ fun ModernSettingsScreen(
     }
 
     if (showChangePin) {
-        ChangePinDialog(
+        ModernChangePinDialog(
             onDismiss = { showChangePin = false },
             onSave = { currentPin, newPin ->
                 val updated = viewModel.changePin(currentPin, newPin)
@@ -429,7 +448,7 @@ fun ModernSettingsScreen(
     }
 
     if (showHiddenCategories) {
-        HiddenCategoriesScreen(
+        ModernHiddenCategoriesScreen(
             liveCategories = uiState.liveCategories,
             vodCategories = uiState.vodCategories,
             seriesCategories = uiState.seriesCategories,
@@ -448,35 +467,32 @@ fun ModernSettingsScreen(
     }
 }
 
+// ============================================
+// COMPONENTES MINIMALISTAS
+// ============================================
+
 @Composable
-private fun SettingsSection(
-    title: String,
-    icon: ImageVector,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        content()
+private fun MinimalistHeader() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = "Ajustes",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = "Personaliza tu experiencia",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
-private fun AccountCard(
+private fun MinimalistAccountCard(
     name: String,
     username: String,
     server: String,
@@ -487,44 +503,53 @@ private fun AccountCard(
     val statusColor = when (status.lowercase()) {
         "active" -> MaterialTheme.colorScheme.primary
         "expired", "banned", "disabled" -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.tertiary
     }
-    Card(
+    
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+        tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.tertiary
+                                )
+                            )
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AccountCircle,
+                        imageVector = Icons.Outlined.AccountCircle,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(36.dp)
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(32.dp)
                     )
                 }
-                Column {
+                
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = username,
@@ -532,82 +557,120 @@ private fun AccountCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Spacer(modifier = Modifier.weight(1f))
-                AssistChip(
-                    onClick = {},
-                    label = { Text(status.replaceFirstChar { it.uppercase() }) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (status.lowercase() == "active") Icons.Default.Verified else Icons.Default.Info,
-                            contentDescription = null
+                
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = statusColor.copy(alpha = 0.15f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(statusColor)
                         )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = statusColor.copy(alpha = 0.16f),
-                        labelColor = statusColor,
-                        leadingIconContentColor = statusColor
-                    )
-                )
+                        Text(
+                            text = status.replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = statusColor
+                        )
+                    }
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                InfoPill(
-                    icon = Icons.Default.CalendarMonth,
-                    label = "Vence",
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MinimalistInfoChip(
+                    icon = Icons.Outlined.CalendarMonth,
+                    label = "Vencimiento",
                     value = expiry,
                     modifier = Modifier.weight(1f)
                 )
-                InfoPill(
-                    icon = Icons.Default.Lan,
+                MinimalistInfoChip(
+                    icon = Icons.Outlined.Link,
                     label = "Conexiones",
                     value = connections,
                     modifier = Modifier.weight(1f)
                 )
             }
+            
             if (server.isNotBlank()) {
-                SettingCard(
-                    title = "Servidor",
-                    description = server,
-                    icon = Icons.Default.CloudQueue
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CloudQueue,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Servidor",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = server,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun InfoPill(
+private fun MinimalistInfoChip(
     icon: ImageVector,
     label: String,
     value: String,
     modifier: Modifier = Modifier
 ) {
     Surface(
+        modifier = modifier,
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
-        tonalElevation = 0.dp,
-        modifier = modifier
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
     ) {
         Row(
-            modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
             )
             Column {
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = value,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
@@ -615,80 +678,42 @@ private fun InfoPill(
 }
 
 @Composable
-private fun SettingCard(
+private fun MinimalistSection(
     title: String,
-    description: String,
     icon: ImageVector,
-    onClick: (() -> Unit)? = null,
-    trailing: @Composable (() -> Unit)? = null,
-    content: @Composable (ColumnScope.() -> Unit)? = null
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
-            ),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 4.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            tonalElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                if (trailing != null) {
-                    trailing()
-                } else if (onClick != null) {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            if (content != null) {
                 content()
             }
         }
@@ -696,29 +721,268 @@ private fun SettingCard(
 }
 
 @Composable
-private fun ClearHistoryButton(
-    text: String,
-    onClick: () -> Unit
+private fun MinimalistSettingItem(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+    showArrow: Boolean = false
 ) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    val interactionSource = remember { MutableInteractionSource() }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick
+                    )
+                } else Modifier
+            )
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Icon(
-            imageVector = Icons.Default.Delete,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text)
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        
+        if (trailing != null) {
+            trailing()
+        } else if (showArrow) {
+            Icon(
+                imageVector = Icons.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(24.dp)
+            )
+        }
     }
 }
 
 @Composable
-private fun PinSetupDialog(
+private fun MinimalistSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = MaterialTheme.colorScheme.primary,
+            checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
+            uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    )
+}
+
+@Composable
+private fun MinimalistButton(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    danger: Boolean = false
+) {
+    val containerColor = if (danger) {
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    
+    val contentColor = if (danger) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = contentColor
+            )
+        }
+    }
+}
+
+@Composable
+private fun MinimalistLogoutButton(
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.error.copy(alpha = 0.3f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Cerrar sesión",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = "Salir de tu cuenta",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            Icon(
+                imageVector = Icons.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
+            )
+        }
+    }
+}
+
+// ============================================
+// DIÁLOGOS MODERNIZADOS
+// ============================================
+
+@Composable
+private fun ModernLogoutDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.errorContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        },
+        title = {
+            Text(
+                text = "¿Cerrar sesión?",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        text = {
+            Text(
+                text = "Se borrarán todos los datos locales y deberás iniciar sesión nuevamente.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Cerrar sesión",
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Cancelar")
+            }
+        },
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+@Composable
+private fun ModernPinSetupDialog(
     onDismiss: () -> Unit,
     onSave: (String) -> Unit
 ) {
@@ -728,14 +992,37 @@ private fun PinSetupDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(imageVector = Icons.Default.Lock, contentDescription = null) },
-        title = { Text("Configurar PIN") },
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        },
+        title = {
+            Text(
+                text = "Configurar PIN",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
                     text = "Crea un PIN de 4 dígitos para proteger el contenido",
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                
                 OutlinedTextField(
                     value = pin,
                     onValueChange = { pin = sanitizePin(it) },
@@ -743,8 +1030,13 @@ private fun PinSetupDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Key, contentDescription = null)
+                    }
                 )
+                
                 OutlinedTextField(
                     value = confirmPin,
                     onValueChange = { confirmPin = sanitizePin(it) },
@@ -752,45 +1044,66 @@ private fun PinSetupDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Lock, contentDescription = null)
+                    },
+                    isError = error != null
                 )
+                
                 if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Error,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = error!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val sanitizedPin = sanitizePin(pin)
-                val sanitizedConfirm = sanitizePin(confirmPin)
-                pin = sanitizedPin
-                confirmPin = sanitizedConfirm
-                if (sanitizedPin.length != 4 || sanitizedConfirm.length != 4) {
-                    error = "El PIN debe tener 4 dígitos"
-                    return@Button
-                }
-                if (sanitizedPin != sanitizedConfirm) {
-                    error = "Los PIN no coinciden"
-                    return@Button
-                }
-                error = null
-                onSave(sanitizedPin)
-            }) {
-                Text("Guardar")
+            Button(
+                onClick = {
+                    val sanitizedPin = sanitizePin(pin)
+                    val sanitizedConfirm = sanitizePin(confirmPin)
+                    pin = sanitizedPin
+                    confirmPin = sanitizedConfirm
+                    if (sanitizedPin.length != 4 || sanitizedConfirm.length != 4) {
+                        error = "El PIN debe tener 4 dígitos"
+                        return@Button
+                    }
+                    if (sanitizedPin != sanitizedConfirm) {
+                        error = "Los PIN no coinciden"
+                        return@Button
+                    }
+                    error = null
+                    onSave(sanitizedPin)
+                },
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Guardar", fontWeight = FontWeight.SemiBold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar") }
-        }
+        },
+        shape = RoundedCornerShape(24.dp)
     )
 }
 
 @Composable
-private fun PinPromptDialog(
+private fun ModernPinPromptDialog(
     purpose: PinPromptPurpose,
     error: String?,
     onDismiss: () -> Unit,
@@ -798,25 +1111,54 @@ private fun PinPromptDialog(
 ) {
     var pin by remember { mutableStateOf("") }
     var localError by remember { mutableStateOf<String?>(null) }
+    
     val title = when (purpose) {
         PinPromptPurpose.ENABLE -> "Activar control parental"
         PinPromptPurpose.DISABLE -> "Desactivar control parental"
-        PinPromptPurpose.OPEN_CATEGORIES -> "Acceder a categorías"
+        PinPromptPurpose.OPEN_CATEGORIES -> "Verificación requerida"
     }
+    
     val description = when (purpose) {
-        PinPromptPurpose.ENABLE -> "Ingresa tu PIN para activar el control parental"
-        PinPromptPurpose.DISABLE -> "Ingresa tu PIN para desactivar el control parental"
-        PinPromptPurpose.OPEN_CATEGORIES -> "Ingresa tu PIN para gestionar las categorías ocultas"
+        PinPromptPurpose.ENABLE -> "Ingresa tu PIN para activar la protección"
+        PinPromptPurpose.DISABLE -> "Ingresa tu PIN para desactivar la protección"
+        PinPromptPurpose.OPEN_CATEGORIES -> "Ingresa tu PIN para continuar"
     }
+    
     val combinedError = error ?: localError
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(imageVector = Icons.Default.Password, contentDescription = null) },
-        title = { Text(title) },
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Password,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        },
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(description, style = MaterialTheme.typography.bodyMedium)
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
                 OutlinedTextField(
                     value = pin,
                     onValueChange = { pin = sanitizePin(it) },
@@ -824,37 +1166,60 @@ private fun PinPromptDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Password, contentDescription = null)
+                    },
+                    isError = combinedError != null
                 )
+                
                 if (combinedError != null) {
-                    Text(
-                        text = combinedError,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Error,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = combinedError,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val sanitized = sanitizePin(pin)
-                pin = sanitized
-                if (sanitized.length != 4) {
-                    localError = "El PIN debe tener 4 dígitos"
-                    return@Button
-                }
-                localError = null
-                onConfirm(sanitized)
-            }) {
-                Text("Confirmar")
+            Button(
+                onClick = {
+                    val sanitized = sanitizePin(pin)
+                    pin = sanitized
+                    if (sanitized.length != 4) {
+                        localError = "El PIN debe tener 4 dígitos"
+                        return@Button
+                    }
+                    localError = null
+                    onConfirm(sanitized)
+                },
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Confirmar", fontWeight = FontWeight.SemiBold)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        },
+        shape = RoundedCornerShape(24.dp)
     )
 }
 
 @Composable
-private fun ChangePinDialog(
+private fun ModernChangePinDialog(
     onDismiss: () -> Unit,
     onSave: suspend (String, String) -> Boolean
 ) {
@@ -866,14 +1231,37 @@ private fun ChangePinDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(imageVector = Icons.Default.Key, contentDescription = null) },
-        title = { Text("Cambiar PIN") },
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Key,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        },
+        title = {
+            Text(
+                text = "Cambiar PIN",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
                     text = "Ingresa tu PIN actual y el nuevo PIN",
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                
                 OutlinedTextField(
                     value = currentPin,
                     onValueChange = { currentPin = sanitizePin(it) },
@@ -881,8 +1269,13 @@ private fun ChangePinDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Lock, contentDescription = null)
+                    }
                 )
+                
                 OutlinedTextField(
                     value = newPin,
                     onValueChange = { newPin = sanitizePin(it) },
@@ -890,8 +1283,13 @@ private fun ChangePinDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Key, contentDescription = null)
+                    }
                 )
+                
                 OutlinedTextField(
                     value = confirmPin,
                     onValueChange = { confirmPin = sanitizePin(it) },
@@ -899,49 +1297,96 @@ private fun ChangePinDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Lock, contentDescription = null)
+                    },
+                    isError = error != null
                 )
+                
                 if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Error,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = error!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val sanitizedCurrent = sanitizePin(currentPin)
-                val sanitizedNew = sanitizePin(newPin)
-                val sanitizedConfirm = sanitizePin(confirmPin)
-                currentPin = sanitizedCurrent
-                newPin = sanitizedNew
-                confirmPin = sanitizedConfirm
+            Button(
+                onClick = {
+                    val sanitizedCurrent = sanitizePin(currentPin)
+                    val sanitizedNew = sanitizePin(newPin)
+                    val sanitizedConfirm = sanitizePin(confirmPin)
+                    currentPin = sanitizedCurrent
+                    newPin = sanitizedNew
+                    confirmPin = sanitizedConfirm
 
-                if (sanitizedCurrent.length != 4 || sanitizedNew.length != 4 || sanitizedConfirm.length != 4) {
-                    error = "Todos los PIN deben tener 4 dígitos"
-                    return@Button
-                }
-                if (sanitizedNew == sanitizedCurrent) {
-                    error = "El nuevo PIN debe ser diferente"
-                    return@Button
-                }
-                if (sanitizedNew != sanitizedConfirm) {
-                    error = "Los nuevos PIN no coinciden"
-                    return@Button
-                }
-                scope.launch {
-                    val success = onSave(sanitizedCurrent, sanitizedNew)
-                    if (!success) {
-                        error = "PIN actual incorrecto"
+                    if (sanitizedCurrent.length != 4 || sanitizedNew.length != 4 || sanitizedConfirm.length != 4) {
+                        error = "Todos los PIN deben tener 4 dígitos"
+                        return@Button
                     }
-                }
-            }) {
-                Text("Actualizar")
+                    if (sanitizedNew == sanitizedCurrent) {
+                        error = "El nuevo PIN debe ser diferente"
+                        return@Button
+                    }
+                    if (sanitizedNew != sanitizedConfirm) {
+                        error = "Los nuevos PIN no coinciden"
+                        return@Button
+                    }
+                    scope.launch {
+                        val success = onSave(sanitizedCurrent, sanitizedNew)
+                        if (!success) {
+                            error = "PIN actual incorrecto"
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Actualizar", fontWeight = FontWeight.SemiBold)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        },
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+@Composable
+internal fun ModernHiddenCategoriesScreen(
+    liveCategories: List<com.iptv.playxy.domain.Category>,
+    vodCategories: List<com.iptv.playxy.domain.Category>,
+    seriesCategories: List<com.iptv.playxy.domain.Category>,
+    initialLive: Set<String>,
+    initialVod: Set<String>,
+    initialSeries: Set<String>,
+    onDismiss: () -> Unit,
+    onSave: (Set<String>, Set<String>, Set<String>) -> Unit
+) {
+    // Llamar a la versión pública de HiddenCategoriesScreen
+    HiddenCategoriesScreen(
+        liveCategories = liveCategories,
+        vodCategories = vodCategories,
+        seriesCategories = seriesCategories,
+        initialLive = initialLive,
+        initialVod = initialVod,
+        initialSeries = initialSeries,
+        onDismiss = onDismiss,
+        onSave = onSave
     )
 }
 

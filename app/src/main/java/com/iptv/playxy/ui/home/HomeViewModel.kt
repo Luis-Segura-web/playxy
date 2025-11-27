@@ -74,9 +74,12 @@ class HomeViewModel @Inject constructor(
                             categoryId = series.categoryId
                         )
                     }
-                    val featured = (featuredMovies + featuredSeries).shuffled().take(6)
+                    val featured = (featuredMovies + featuredSeries)
+                        .distinctBy { it.streamId ?: it.seriesId }
+                        .shuffled()
+                        .take(6)
                     // Trending Movies: High rated, shuffled
-                    val trending = sortedMovies.take(30).shuffled().take(20).map { movie ->
+                    val trending = sortedMovies.distinctBy { it.streamId }.take(30).shuffled().take(20).map { movie ->
                         HomeContentItem(
                             title = movie.name,
                             poster = movie.streamIcon,
@@ -89,7 +92,7 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                     // Trending Series
-                    val trendingSer = sortedSeries.take(30).shuffled().take(20).map { series ->
+                    val trendingSer = sortedSeries.distinctBy { it.seriesId }.take(30).shuffled().take(20).map { series ->
                         HomeContentItem(
                             title = series.name,
                             poster = series.cover,
@@ -104,6 +107,7 @@ class HomeViewModel @Inject constructor(
                     // Recent Movies: Sort by added date
                     val recentMov = moviesWithTmdb
                         .filter { !it.added.isNullOrBlank() }
+                        .distinctBy { it.streamId }
                         .sortedByDescending { it.added }
                         .take(20)
                         .map { movie ->
@@ -121,6 +125,7 @@ class HomeViewModel @Inject constructor(
                     // Recent Series
                     val recentSer = seriesWithTmdb
                         .filter { !it.releaseDate.isNullOrBlank() }
+                        .distinctBy { it.seriesId }
                         .sortedByDescending { it.releaseDate }
                         .take(20)
                         .map { series ->
@@ -137,6 +142,7 @@ class HomeViewModel @Inject constructor(
                     }
                     // High Rated Movies
                     val highRatedMov = sortedMovies
+                        .distinctBy { it.streamId }
                         .filter { it.rating >= 3.5 }
                         .take(20)
                         .map { movie ->
@@ -153,6 +159,7 @@ class HomeViewModel @Inject constructor(
                         }
                     // High Rated Series
                     val highRatedSer = sortedSeries
+                        .distinctBy { it.seriesId }
                         .filter { it.rating >= 3.5 }
                         .take(20)
                         .map { series ->

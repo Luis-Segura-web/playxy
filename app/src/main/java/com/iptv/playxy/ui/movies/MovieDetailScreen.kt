@@ -318,7 +318,14 @@ fun MovieDetailScreen(
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
-            snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+            snackbarHost = { 
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, start = 16.dp, end = 16.dp)
+                ) 
+            }
         ) { paddingValues ->
             Column(
                 modifier = Modifier

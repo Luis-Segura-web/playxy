@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -17,6 +18,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -31,6 +33,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.iptv.playxy.domain.VodStream
 import com.iptv.playxy.ui.components.CategoryBar
@@ -85,7 +88,20 @@ fun MoviesGrid(
     modifier: Modifier = Modifier,
     viewModel: MoviesViewModel = hiltViewModel()
 ) {
-    if (movies.itemCount == 0 && movies.loadState.refresh !is LoadState.Loading) {
+    val uiState by viewModel.uiState.collectAsState()
+    val isSpecialCategory = uiState.selectedCategory.categoryId in setOf("favorites", "recents")
+    val isLoading = movies.loadState.refresh is LoadState.Loading
+    val isEmpty = movies.itemCount == 0
+    
+    // Para categorías especiales, mostrar mensaje vacío inmediatamente si no hay items
+    // Para otras categorías, esperar a que termine de cargar
+    val shouldShowEmpty = if (isSpecialCategory) {
+        isEmpty
+    } else {
+        isEmpty && !isLoading
+    }
+    
+    if (shouldShowEmpty) {
         Box(
             modifier = modifier,
             contentAlignment = Alignment.Center
@@ -127,72 +143,67 @@ fun MoviePosterItem(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        modifier = modifier.fillMaxWidth()
     ) {
-        // Poster Image con aspect ratio 2:3 y overlays
+        // Poster Image mejorado
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
+                .clickable(onClick = onClick)
         ) {
-            // Poster Card
             Card(
                 modifier = Modifier.fillMaxSize(),
-                shape = RoundedCornerShape(8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                AsyncImage(
-                    model = movie.streamIcon,
-                    contentDescription = movie.name,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    error = androidx.compose.ui.res.painterResource(
-                        android.R.drawable.ic_menu_report_image
-                    ),
-                    placeholder = androidx.compose.ui.res.painterResource(
-                        android.R.drawable.ic_menu_gallery
-                    )
+                shape = RoundedCornerShape(14.dp),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = 6.dp,
+                    pressedElevation = 2.dp
                 )
-            }
-
-            // Overlay superior con degradado vertical
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.25f)
-                    .align(Alignment.TopCenter)
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                                Color.Transparent
-                            )
+            ) {
+                Box {
+                    AsyncImage(
+                        model = movie.streamIcon,
+                        contentDescription = movie.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        error = androidx.compose.ui.res.painterResource(
+                            android.R.drawable.ic_menu_report_image
+                        ),
+                        placeholder = androidx.compose.ui.res.painterResource(
+                            android.R.drawable.ic_menu_gallery
                         )
                     )
-            )
+                    
+                    // Gradient overlay sutil
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.3f),
+                                        Color.Transparent,
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.2f)
+                                    )
+                                )
+                            )
+                    )
+                }
+            }
 
-            // Rating y Favorito en la misma fila (sin separación)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Rating (esquina superior izquierda)
-                if (movie.rating5Based > 0) {
+            // Rating badge moderno
+            if (movie.rating5Based > 0) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.Black.copy(alpha = 0.75f)
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier
-                            .background(
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                RoundedCornerShape(4.dp)
-                            )
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Star,
@@ -201,45 +212,51 @@ fun MoviePosterItem(
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = java.util.Locale.getDefault().let { l -> String.format(l, "%.1f", movie.rating5Based) },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            text = java.util.Locale.getDefault().let { l ->
+                                String.format(l, "%.1f", movie.rating5Based)
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                         )
                     }
-                } else {
-                    Spacer(modifier = Modifier.width(1.dp))
                 }
+            }
 
-                // Favorito (esquina superior derecha, sin espacio adicional)
-                IconButton(
-                    onClick = onToggleFavorite,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .offset(x = 4.dp, y = (-4).dp)
-                        .semantics { contentDescription = "Favorito" }
-                ) {
+            // Favorito minimalista
+            Surface(
+                onClick = onToggleFavorite,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(32.dp)
+                    .semantics { contentDescription = "Favorito" },
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.6f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = null,
-                        tint = if (isFavorite) Color(0xFFFF0000) else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (isFavorite) Color(0xFFFF4444) else Color.White,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Movie Title (max 3 lines)
+        // Título mejorado
         Text(
             text = movie.name,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 3,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            lineHeight = 18.sp
         )
     }
 }

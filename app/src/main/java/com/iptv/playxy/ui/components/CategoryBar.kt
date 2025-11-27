@@ -27,17 +27,11 @@ fun CategoryBar(
     modifier: Modifier = Modifier,
     highlightedCategoryIds: Set<String> = emptySet()
 ) {
-    Surface(
+    LazyRow(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
             items(categories, key = { it.categoryId }) { category ->
                 val isSelected = category.categoryId == selectedCategoryId
                 val isHighlighted = highlightedCategoryIds.contains(category.categoryId)
@@ -62,5 +56,4 @@ fun CategoryBar(
                 )
             }
         }
-    }
 }

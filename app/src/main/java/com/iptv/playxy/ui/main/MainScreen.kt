@@ -215,10 +215,16 @@ fun MainScreen(
                                     )
                                 }
                                 else -> {
-                                    val subtitle = when (state.currentDestination) {
-                                        MainDestination.TV -> "${state.liveStreamCount} canales"
-                                        MainDestination.MOVIES -> "${state.vodStreamCount} películas"
-                                        MainDestination.SERIES -> "${state.seriesCount} series"
+                                    val contentCount = when (state.currentDestination) {
+                                        MainDestination.TV -> state.liveStreamCount
+                                        MainDestination.MOVIES -> state.vodStreamCount
+                                        MainDestination.SERIES -> state.seriesCount
+                                        else -> 0
+                                    }
+                                    val contentLabel = when (state.currentDestination) {
+                                        MainDestination.TV -> "Canales"
+                                        MainDestination.MOVIES -> "Películas"
+                                        MainDestination.SERIES -> "Series"
                                         else -> ""
                                     }
                                     val lastUpdateTime = when (state.currentDestination) {
@@ -227,11 +233,16 @@ fun MainScreen(
                                         MainDestination.SERIES -> state.lastSeriesUpdateTime
                                         else -> 0L
                                     }
-                                    val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
+                                    val dateFormat = remember { SimpleDateFormat("dd/MM", Locale.getDefault()) }
                                     val lastUpdateText = if (lastUpdateTime > 0) {
-                                        dateFormat.format(Date(lastUpdateTime))
+                                        "Actualizado: ${dateFormat.format(Date(lastUpdateTime))}"
                                     } else {
                                         "Sin sincronizar"
+                                    }
+                                    val subtitle = if (contentCount > 0) {
+                                        "$lastUpdateText • $contentCount $contentLabel"
+                                    } else {
+                                        lastUpdateText
                                     }
                                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text(
@@ -241,7 +252,7 @@ fun MainScreen(
                                         )
                                         if (subtitle.isNotEmpty()) {
                                             Text(
-                                                text = "$subtitle · $lastUpdateText",
+                                                text = subtitle,
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -1090,7 +1101,7 @@ fun SettingsContent(
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(Alignment.TopCenter)
                 .padding(16.dp)
         )
     }
