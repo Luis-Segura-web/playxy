@@ -46,7 +46,7 @@ object ResponseMapper {
             streamId = response.streamId.orEmpty(),
             name = response.name.orEmpty(),
             streamIcon = response.streamIcon,
-            tmdbId = response.tmdbId,
+            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId),
             rating = response.rating?.toFloatOrNull() ?: 0f,
             rating5Based = response.rating5Based?.toFloatOrNull() ?: 0f,
             containerExtension = response.containerExtension.orEmpty(),
@@ -74,7 +74,7 @@ object ResponseMapper {
             youtubeTrailer = response.youtubeTrailer,
             episodeRunTime = response.episodeRunTime,
             categoryId = response.categoryId.orEmpty(),
-            tmdbId = response.tmdbId,
+            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId),
             lastModified = response.lastModified
         )
     }
@@ -150,7 +150,7 @@ object ResponseMapper {
 
     fun toEpisodeInfo(response: EpisodeInfoResponse): EpisodeInfo {
         return EpisodeInfo(
-            tmdbId = response.tmdbId,
+            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId),
             releaseDate = response.releaseDate,
             plot = response.plot,
             duration = response.duration ?: response.durationSecs?.let {
@@ -170,7 +170,7 @@ object ResponseMapper {
             else -> null
         }
         return VodInfo(
-            tmdbId = info.tmdbId,
+            tmdbId = TmdbIdValidator.sanitizeTmdbId(info.tmdbId),
             name = info.name ?: "",
             originalName = info.originalName,
             coverBig = info.coverBig,

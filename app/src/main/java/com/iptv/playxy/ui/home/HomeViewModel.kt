@@ -32,12 +32,18 @@ class HomeViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val result = withContext(Dispatchers.IO) {
-                    // Get all VOD streams and Series with TMDB data
+                    // Get all VOD streams and Series
                     val allMovies = repository.getVodStreams()
                     val allSeries = repository.getSeries()
-                    // Filter by TMDB ID availability for better quality content
+                    
+                    // Preferir contenido con TMDB, pero incluir todo el catálogo
+                    // Algunos servicios no envían tmdb_id en las listas
                     val moviesWithTmdb = allMovies.filter { !it.tmdbId.isNullOrBlank() }
                     val seriesWithTmdb = allSeries.filter { !it.tmdbId.isNullOrBlank() }
+                    
+                    // Si no hay contenido con TMDB, usar todo el catálogo
+                    val moviesForDisplay = if (moviesWithTmdb.isNotEmpty()) moviesWithTmdb else allMovies
+                    val seriesForDisplay = if (seriesWithTmdb.isNotEmpty()) seriesWithTmdb else allSeries
                     // Normalize rating to base 5 for sorting/filters
                     fun movieRating(v: com.iptv.playxy.domain.VodStream): Double {
                         val base5 = if (v.rating5Based > 0f) v.rating5Based else v.rating / 2f
@@ -47,8 +53,8 @@ class HomeViewModel @Inject constructor(
                         val base5 = if (s.rating5Based > 0f) s.rating5Based else s.rating / 2f
                         return base5.toDouble()
                     }
-                    val sortedMovies = moviesWithTmdb.sortedByDescending { movieRating(it) }
-                    val sortedSeries = seriesWithTmdb.sortedByDescending { seriesRating(it) }
+                    val sortedMovies = moviesForDisplay.sortedByDescending { movieRating(it) }
+                    val sortedSeries = seriesForDisplay.sortedByDescending { seriesRating(it) }
                     // Featured: Mix of top rated movies and series
                     val featuredMovies = sortedMovies.take(5).map { movie ->
                         HomeContentItem(
@@ -104,11 +110,15 @@ class HomeViewModel @Inject constructor(
                             categoryId = series.categoryId
                         )
                     }
-                    // Recent Movies: Sort by added date
-                    val recentMov = moviesWithTmdb
-                        .filter { !it.added.isNullOrBlank() }
+                    // Recent Movies: Sort by added date, fallback to all movies if none have dates
+                    val moviesWithDates = moviesForDisplay.filter { !it.added.isNullOrBlank() }
+                    val recentMovSource = if (moviesWithDates.isNotEmpty()) {
+                        moviesWithDates.sortedByDescending { it.added }
+                    } else {
+                        moviesForDisplay // usar todas las películas sin ordenar por fecha
+                    }
+                    val recentMov = recentMovSource
                         .distinctBy { it.streamId }
-                        .sortedByDescending { it.added }
                         .take(20)
                         .map { movie ->
                             HomeContentItem(
@@ -122,28 +132,32 @@ class HomeViewModel @Inject constructor(
                             categoryId = movie.categoryId
                         )
                     }
-                    // Recent Series
-                    val recentSer = seriesWithTmdb
-                        .filter { !it.releaseDate.isNullOrBlank() }
+                    // Recent Series: Sort by releaseDate or lastModified, fallback to all series
+                    val seriesWithDates = seriesForDisplay.filter { !it.releaseDate.isNullOrBlank() || !it.lastModified.isNullOrBlank() }
+                    val recentSerSource = if (seriesWithDates.isNotEmpty()) {
+                        seriesWithDates.sortedByDescending { it.releaseDate ?: it.lastModified }
+                    } else {
+                        seriesForDisplay // usar todas las series sin ordenar por fecha
+                    }
+                    val recentSer = recentSerSource
                         .distinctBy { it.seriesId }
-                        .sortedByDescending { it.releaseDate }
                         .take(20)
                         .map { series ->
                             HomeContentItem(
                                 title = series.name,
                             poster = series.cover,
                             backdrop = series.backdropPath.firstOrNull(),
-                            year = series.releaseDate?.take(4),
+                            year = series.releaseDate?.take(4) ?: series.lastModified?.take(4),
                             rating = seriesRating(series),
                             description = series.plot,
                             seriesId = series.seriesId,
                             categoryId = series.categoryId
                         )
                     }
-                    // High Rated Movies
-                    val highRatedMov = sortedMovies
-                        .distinctBy { it.streamId }
-                        .filter { it.rating >= 3.5 }
+                    // High Rated Movies: fallback to top rated if none >= 3.5
+                    val moviesHighRated = sortedMovies.distinctBy { it.streamId }.filter { movieRating(it) >= 3.5 }
+                    val highRatedMovSource = if (moviesHighRated.isNotEmpty()) moviesHighRated else sortedMovies.distinctBy { it.streamId }
+                    val highRatedMov = highRatedMovSource
                         .take(20)
                         .map { movie ->
                             HomeContentItem(
@@ -157,10 +171,10 @@ class HomeViewModel @Inject constructor(
                                 categoryId = movie.categoryId
                             )
                         }
-                    // High Rated Series
-                    val highRatedSer = sortedSeries
-                        .distinctBy { it.seriesId }
-                        .filter { it.rating >= 3.5 }
+                    // High Rated Series: fallback to top rated if none >= 3.5
+                    val seriesHighRated = sortedSeries.distinctBy { it.seriesId }.filter { seriesRating(it) >= 3.5 }
+                    val highRatedSerSource = if (seriesHighRated.isNotEmpty()) seriesHighRated else sortedSeries.distinctBy { it.seriesId }
+                    val highRatedSer = highRatedSerSource
                         .take(20)
                         .map { series ->
                             HomeContentItem(

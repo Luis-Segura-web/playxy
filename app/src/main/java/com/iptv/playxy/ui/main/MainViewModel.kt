@@ -120,8 +120,16 @@ class MainViewModel @Inject constructor(
     }
 
     suspend fun fetchHomeHighlights(): HomeHighlights {
-        val vod = repository.getVodStreams().filter { !it.tmdbId.isNullOrBlank() }
-        val series = repository.getSeries().filter { !it.tmdbId.isNullOrBlank() }
+        val allVod = repository.getVodStreams()
+        val allSeries = repository.getSeries()
+        
+        // Preferir contenido con TMDB, pero si no hay, usar todo el catálogo
+        val vodWithTmdb = allVod.filter { !it.tmdbId.isNullOrBlank() }
+        val seriesWithTmdb = allSeries.filter { !it.tmdbId.isNullOrBlank() }
+        
+        val vod = if (vodWithTmdb.isNotEmpty()) vodWithTmdb else allVod
+        val series = if (seriesWithTmdb.isNotEmpty()) seriesWithTmdb else allSeries
+        
         val movieLinks = vod.take(30).map {
             HomeLink(
                 title = it.name,

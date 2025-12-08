@@ -548,6 +548,24 @@ class IptvRepository @Inject constructor(
         return vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
     }
     
+    /**
+     * Verifica si el catálogo de películas tiene soporte TMDB
+     * (si al menos algunas películas tienen tmdb_id en la lista)
+     */
+    suspend fun hasVodTmdbSupport(): Boolean {
+        val streams = vodStreamDao.getAllVodStreams().take(100)
+        return streams.any { !it.tmdbId.isNullOrBlank() && it.tmdbId != "0" }
+    }
+    
+    /**
+     * Verifica si el catálogo de series tiene soporte TMDB
+     * (si al menos algunas series tienen tmdb_id en la lista)
+     */
+    suspend fun hasSeriesTmdbSupport(): Boolean {
+        val series = seriesDao.getAllSeries().take(100)
+        return series.any { !it.tmdbId.isNullOrBlank() && it.tmdbId != "0" }
+    }
+    
     suspend fun getVodStreamsByCategory(categoryId: String): List<VodStream> {
         return vodStreamDao.getVodStreamsByCategory(categoryId).map { EntityMapper.vodStreamToDomain(it) }
     }
@@ -750,9 +768,15 @@ class IptvRepository @Inject constructor(
                 val profile = cast.profile ?: tmdbProfileUrl(body.profilePath)
                 val credits = body.combinedCredits?.cast.orEmpty()
                 val allStreams = vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
-                val streamsByTmdb = allStreams.groupBy { it.tmdbId }
+                // Filter streams with valid TMDB IDs to avoid grouping nulls together
+                val streamsByTmdb = allStreams
+                    .filter { !it.tmdbId.isNullOrBlank() }
+                    .groupBy { it.tmdbId }
                 val allSeries = seriesDao.getAllSeries().map { EntityMapper.seriesToDomain(it) }
-                val seriesByTmdb = allSeries.groupBy { it.tmdbId }
+                // Filter series with valid TMDB IDs to avoid grouping nulls together
+                val seriesByTmdb = allSeries
+                    .filter { !it.tmdbId.isNullOrBlank() }
+                    .groupBy { it.tmdbId }
 
                 fun mapMovieLinks(includeUnavailable: Boolean): List<com.iptv.playxy.domain.TmdbMovieLink> {
                     val list = mutableListOf<com.iptv.playxy.domain.TmdbMovieLink>()
@@ -951,7 +975,9 @@ class IptvRepository @Inject constructor(
             ?: emptyList()
 
         val allStreams = vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
-        val streamsByTmdb = allStreams.groupBy { it.tmdbId }
+        val streamsByTmdb = allStreams
+            .filter { !it.tmdbId.isNullOrBlank() }
+            .groupBy { it.tmdbId }
 
         fun mapMovieLinks(
             results: List<com.iptv.playxy.data.api.TmdbMovieResult>?,
@@ -1097,7 +1123,9 @@ class IptvRepository @Inject constructor(
             ?: emptyList()
 
         val allSeries = seriesDao.getAllSeries().map { EntityMapper.seriesToDomain(it) }
-        val seriesByTmdb = allSeries.groupBy { it.tmdbId }
+        val seriesByTmdb = allSeries
+            .filter { !it.tmdbId.isNullOrBlank() }
+            .groupBy { it.tmdbId }
 
         fun mapSeriesLinks(
             results: List<com.iptv.playxy.data.api.TmdbSeriesResult>?,

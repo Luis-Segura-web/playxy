@@ -38,8 +38,8 @@ data class VodInfo(
     @field:Json(name = "backdrop_path") val backdropPath: List<String>?,
     @field:Json(name = "duration_secs") val durationSecs: Int?,
     @field:Json(name = "duration") val duration: String?,
-    @field:Json(name = "video") val video: String?,
-    @field:Json(name = "audio") val audio: String?,
+    @field:Json(name = "video") val video: Any?,
+    @field:Json(name = "audio") val audio: Any?,
     @field:Json(name = "bitrate") val bitrate: Int?
 )
 

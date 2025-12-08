@@ -608,7 +608,11 @@ fun MovieDetailScreen(
                     }
 
                     val tmdbEnabled = uiState.tmdbEnabled
-                    if (tmdbEnabled && !movieInfo?.tmdbCast.isNullOrEmpty()) {
+                    val catalogHasTmdb = uiState.catalogHasTmdb  // Si el catálogo del servicio tiene tmdb_id
+                    val hasTmdbId = !movieInfo?.tmdbId.isNullOrBlank()
+                    
+                    // Reparto con navegación a actores (solo si TMDB habilitado Y el catálogo soporta TMDB)
+                    if (tmdbEnabled && catalogHasTmdb && hasTmdbId && !movieInfo?.tmdbCast.isNullOrEmpty()) {
                         Text(
                             text = "Reparto & Equipo",
                             style = MaterialTheme.typography.titleMedium,
@@ -709,8 +713,9 @@ fun MovieDetailScreen(
                         }
                     }
 
+                    // Colección relacionada (solo si TMDB habilitado Y el catálogo soporta TMDB)
                     val collectionItems = movieInfo?.tmdbCollection ?: emptyList()
-                    if (tmdbEnabled && collectionItems.size > 1) {
+                    if (tmdbEnabled && catalogHasTmdb && hasTmdbId && collectionItems.size > 1) {
                         Text(
                             text = "Colección relacionada",
                             style = MaterialTheme.typography.titleMedium,
@@ -735,7 +740,8 @@ fun MovieDetailScreen(
                         }
                     }
 
-                    if (tmdbEnabled && !movieInfo?.tmdbSimilar.isNullOrEmpty()) {
+                    // Películas similares (solo si TMDB habilitado Y el catálogo soporta TMDB)
+                    if (tmdbEnabled && catalogHasTmdb && hasTmdbId && !movieInfo?.tmdbSimilar.isNullOrEmpty()) {
                         Text(
                             text = "Películas similares",
                             style = MaterialTheme.typography.titleMedium,

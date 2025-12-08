@@ -581,6 +581,8 @@ fun SeriesDetailScreen(
                                 synopsisExpanded = synopsisExpanded,
                                 onToggleSynopsis = { synopsisExpanded = !synopsisExpanded },
                                 tmdbEnabled = uiState.tmdbEnabled,
+                                catalogHasTmdb = uiState.catalogHasTmdb,
+                                hasTmdbId = !series.tmdbId.isNullOrBlank(),
                                 tmdbCast = uiState.tmdbCast,
                                 tmdbSimilar = uiState.tmdbSimilar,
                                 tmdbCollection = uiState.tmdbCollection,
@@ -893,6 +895,8 @@ private fun InfoTabContent(
     synopsisExpanded: Boolean,
     onToggleSynopsis: () -> Unit,
     tmdbEnabled: Boolean,
+    catalogHasTmdb: Boolean,
+    hasTmdbId: Boolean,
     tmdbCast: List<com.iptv.playxy.domain.TmdbCast>,
     tmdbSimilar: List<com.iptv.playxy.domain.TmdbSeriesLink>,
     tmdbCollection: List<com.iptv.playxy.domain.TmdbSeriesLink>,
@@ -986,7 +990,8 @@ private fun InfoTabContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        if (tmdbEnabled && tmdbCast.isNotEmpty()) {
+        // Reparto con navegación a actores (solo si TMDB habilitado Y el catálogo soporta TMDB)
+        if (tmdbEnabled && catalogHasTmdb && hasTmdbId && tmdbCast.isNotEmpty()) {
             Text(
                 text = "Reparto & Equipo",
                 style = MaterialTheme.typography.titleMedium,
@@ -1037,9 +1042,22 @@ private fun InfoTabContent(
                     }
                 }
             }
+        } else if (!series.cast.isNullOrBlank()) {
+            // Mostrar reparto del proveedor como texto sin navegación
+            Text(
+                text = "Reparto & Equipo",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = series.cast,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
-        if (tmdbEnabled && tmdbCollection.size > 1) {
+        // Colección relacionada (solo si TMDB habilitado Y el catálogo soporta TMDB)
+        if (tmdbEnabled && catalogHasTmdb && hasTmdbId && tmdbCollection.size > 1) {
             Text(
                 text = "Colección relacionada",
                 style = MaterialTheme.typography.titleMedium,
@@ -1061,7 +1079,8 @@ private fun InfoTabContent(
             }
         }
 
-        if (tmdbEnabled && tmdbSimilar.isNotEmpty()) {
+        // Series similares (solo si TMDB habilitado Y el catálogo soporta TMDB)
+        if (tmdbEnabled && catalogHasTmdb && hasTmdbId && tmdbSimilar.isNotEmpty()) {
             Text(
                 text = "Series similares",
                 style = MaterialTheme.typography.titleMedium,

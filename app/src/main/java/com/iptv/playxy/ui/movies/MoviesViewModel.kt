@@ -42,7 +42,8 @@ data class MoviesUiState(
     val blockedCategories: Set<String> = emptySet(),
     val searchQuery: String = "",
     val sortOrder: SortOrder = SortOrder.DEFAULT,
-    val tmdbEnabled: Boolean = false
+    val tmdbEnabled: Boolean = false,
+    val catalogHasTmdb: Boolean = false  // Indica si el catálogo del servicio tiene tmdb_id
 )
 
 @HiltViewModel
@@ -366,7 +367,11 @@ class MoviesViewModel @Inject constructor(
     fun refreshTmdbEnabled() {
         viewModelScope.launch {
             val enabled = repository.isTmdbEnabled()
-            _uiState.value = _uiState.value.copy(tmdbEnabled = enabled)
+            val catalogHasTmdb = repository.hasVodTmdbSupport()
+            _uiState.value = _uiState.value.copy(
+                tmdbEnabled = enabled,
+                catalogHasTmdb = catalogHasTmdb
+            )
         }
     }
 

@@ -30,7 +30,8 @@ data class SeriesDetailUiState(
     val tmdbCast: List<TmdbCast> = emptyList(),
     val tmdbSimilar: List<TmdbSeriesLink> = emptyList(),
     val tmdbCollection: List<TmdbSeriesLink> = emptyList(),
-    val tmdbEnabled: Boolean = false
+    val tmdbEnabled: Boolean = false,
+    val catalogHasTmdb: Boolean = false  // Indica si el catálogo del servicio tiene tmdb_id
 )
 
 @HiltViewModel
@@ -192,7 +193,12 @@ class SeriesDetailViewModel @Inject constructor(
     
     private fun refreshTmdbEnabled() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(tmdbEnabled = repository.isTmdbEnabled())
+            val enabled = repository.isTmdbEnabled()
+            val catalogHasTmdb = repository.hasSeriesTmdbSupport()
+            _uiState.value = _uiState.value.copy(
+                tmdbEnabled = enabled,
+                catalogHasTmdb = catalogHasTmdb
+            )
         }
     }
 }
