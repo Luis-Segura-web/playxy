@@ -9,7 +9,7 @@ import com.squareup.moshi.JsonClass
  */
 @JsonClass(generateAdapter = true)
 data class CategoryResponse(
-    @field:Json(name = "category_id") val categoryId: String?,
+    @field:Json(name = "category_id") val categoryId: Any?,  // Can be String or Int
     @field:Json(name = "category_name") val categoryName: String?,
-    @field:Json(name = "parent_id") val parentId: String?
+    @field:Json(name = "parent_id") val parentId: Any?  // Can be String or Int
 )

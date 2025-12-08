@@ -25,34 +25,79 @@ import com.iptv.playxy.domain.VodInfo
  */
 object ResponseMapper {
     
+    // Helper functions to safely convert Any? to specific types
+    private fun Any?.toSafeString(): String = when (this) {
+        null -> ""
+        is String -> this
+        is Number -> this.toString()
+        else -> this.toString()
+    }
+    
+    private fun Any?.toSafeStringOrNull(): String? = when (this) {
+        null -> null
+        is String -> this.ifBlank { null }
+        is Number -> this.toString()
+        else -> this.toString().ifBlank { null }
+    }
+    
+    private fun Any?.toSafeInt(): Int = when (this) {
+        null -> 0
+        is Number -> this.toInt()
+        is String -> this.toIntOrNull() ?: 0
+        else -> 0
+    }
+    
+    private fun Any?.toSafeFloat(): Float = when (this) {
+        null -> 0f
+        is Number -> this.toFloat()
+        is String -> this.toFloatOrNull() ?: 0f
+        else -> 0f
+    }
+    
+    private fun Any?.toSafeBool(trueValues: List<String> = listOf("1", "true")): Boolean = when (this) {
+        null -> false
+        is Boolean -> this
+        is Number -> this.toInt() != 0
+        is String -> trueValues.any { this.equals(it, ignoreCase = true) }
+        else -> false
+    }
+    
+    @Suppress("UNCHECKED_CAST")
+    private fun Any?.toSafeStringList(): List<String> = when (this) {
+        null -> emptyList()
+        is List<*> -> this.filterIsInstance<String>()
+        is String -> if (this.isNotBlank()) listOf(this) else emptyList()
+        else -> emptyList()
+    }
+    
     fun toLiveStream(response: LiveStreamResponse): LiveStream {
         return LiveStream(
-            streamId = response.streamId.orEmpty(),
+            streamId = response.streamId.toSafeString(),
             name = response.name.orEmpty(),
             streamIcon = response.streamIcon,
-            isAdult = response.isAdult?.let { it == "1" || it.equals("true", ignoreCase = true) } ?: false,
-            categoryId = response.categoryId.orEmpty(),
-            tvArchive = response.tvArchive?.let { it == "1" || it.equals("true", ignoreCase = true) } ?: false,
+            isAdult = response.isAdult.toSafeBool(),
+            categoryId = response.categoryId.toSafeString(),
+            tvArchive = response.tvArchive.toSafeBool(),
             epgChannelId = response.epgChannelId,
-            added = response.added,
+            added = response.added.toSafeStringOrNull(),
             customSid = response.customSid,
             directSource = response.directSource,
-            tvArchiveDuration = response.tvArchiveDuration?.toIntOrNull() ?: 0
+            tvArchiveDuration = response.tvArchiveDuration.toSafeInt()
         )
     }
     
     fun toVodStream(response: VodStreamResponse): VodStream {
         return VodStream(
-            streamId = response.streamId.orEmpty(),
+            streamId = response.streamId.toSafeString(),
             name = response.name.orEmpty(),
             streamIcon = response.streamIcon,
-            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId),
-            rating = response.rating?.toFloatOrNull() ?: 0f,
-            rating5Based = response.rating5Based?.toFloatOrNull() ?: 0f,
+            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId.toSafeStringOrNull()),
+            rating = response.rating.toSafeFloat(),
+            rating5Based = response.rating5Based.toSafeFloat(),
             containerExtension = response.containerExtension.orEmpty(),
-            added = response.added,
-            isAdult = response.isAdult?.let { it == "1" || it.equals("true", ignoreCase = true) } ?: false,
-            categoryId = response.categoryId.orEmpty(),
+            added = response.added.toSafeStringOrNull(),
+            isAdult = response.isAdult.toSafeBool(),
+            categoryId = response.categoryId.toSafeString(),
             customSid = response.customSid,
             directSource = response.directSource
         )
@@ -60,7 +105,7 @@ object ResponseMapper {
     
     fun toSeries(response: SeriesResponse): Series {
         return Series(
-            seriesId = response.seriesId.orEmpty(),
+            seriesId = response.seriesId.toSafeString(),
             name = response.name.orEmpty(),
             cover = response.cover,
             plot = response.plot,
@@ -68,22 +113,22 @@ object ResponseMapper {
             director = response.director,
             genre = response.genre,
             releaseDate = response.releaseDate,
-            rating = response.rating?.toFloatOrNull() ?: 0f,
-            rating5Based = response.rating5Based?.toFloatOrNull() ?: 0f,
-            backdropPath = response.backdropPath ?: emptyList(),
+            rating = response.rating.toSafeFloat(),
+            rating5Based = response.rating5Based.toSafeFloat(),
+            backdropPath = response.backdropPath.toSafeStringList(),
             youtubeTrailer = response.youtubeTrailer,
-            episodeRunTime = response.episodeRunTime,
-            categoryId = response.categoryId.orEmpty(),
-            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId),
-            lastModified = response.lastModified
+            episodeRunTime = response.episodeRunTime.toSafeStringOrNull(),
+            categoryId = response.categoryId.toSafeString(),
+            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId.toSafeStringOrNull()),
+            lastModified = response.lastModified.toSafeStringOrNull()
         )
     }
     
     fun toCategory(response: CategoryResponse, orderIndex: Int = 0): Category {
         return Category(
-            categoryId = response.categoryId.orEmpty(),
+            categoryId = response.categoryId.toSafeString(),
             categoryName = response.categoryName.orEmpty(),
-            parentId = response.parentId.orEmpty()
+            parentId = response.parentId.toSafeString()
         )
     }
 
@@ -93,7 +138,7 @@ object ResponseMapper {
         val infoDetails = response.info
 
         val backdrops = when {
-            !infoDetails?.backdropPath.isNullOrEmpty() -> infoDetails?.backdropPath
+            infoDetails?.backdropPath != null -> infoDetails.backdropPath.toSafeStringList().takeIf { it.isNotEmpty() }
             !infoDetails?.backdrop.isNullOrBlank() -> listOf(infoDetails.backdrop)
             originalSeries.backdropPath.isNotEmpty() -> originalSeries.backdropPath
             else -> null
@@ -107,12 +152,12 @@ object ResponseMapper {
             director = infoDetails?.director ?: originalSeries.director,
             genre = infoDetails?.genre ?: originalSeries.genre,
             releaseDate = infoDetails?.releaseDate ?: originalSeries.releaseDate,
-            rating = infoDetails?.rating?.toFloatOrNull() ?: originalSeries.rating,
-            rating5Based = infoDetails?.rating5Based?.toFloatOrNull() ?: originalSeries.rating5Based,
+            rating = infoDetails?.rating.toSafeFloat().takeIf { it > 0f } ?: originalSeries.rating,
+            rating5Based = infoDetails?.rating5Based.toSafeFloat().takeIf { it > 0f } ?: originalSeries.rating5Based,
             backdropPath = backdrops,
             youtubeTrailer = infoDetails?.youtubeTrailer ?: originalSeries.youtubeTrailer,
-            episodeRunTime = infoDetails?.episodeRunTime ?: originalSeries.episodeRunTime,
-            lastModified = infoDetails?.lastModified ?: originalSeries.lastModified
+            episodeRunTime = infoDetails?.episodeRunTime.toSafeStringOrNull() ?: originalSeries.episodeRunTime,
+            lastModified = infoDetails?.lastModified.toSafeStringOrNull() ?: originalSeries.lastModified
         )
 
         return SeriesInfo(
@@ -126,9 +171,9 @@ object ResponseMapper {
 
     fun toSeason(response: SeasonResponse): Season {
         return Season(
-            seasonNumber = response.seasonNumber?.toIntOrNull() ?: 0,
-            name = response.name ?: "Temporada ${response.seasonNumber ?: "?"}",
-            episodeCount = response.episodeCount?.toIntOrNull() ?: 0,
+            seasonNumber = response.seasonNumber.toSafeInt(),
+            name = response.name ?: "Temporada ${response.seasonNumber.toSafeString().ifBlank { "?" }}",
+            episodeCount = response.episodeCount.toSafeInt(),
             cover = response.cover ?: response.coverBig,
             airDate = response.airDate
         )
@@ -136,28 +181,27 @@ object ResponseMapper {
 
     fun toEpisode(response: EpisodeResponse): Episode {
         return Episode(
-            id = response.id.orEmpty(),
-            episodeNum = response.episodeNum?.toIntOrNull() ?: 0,
-            title = response.title ?: "Episodio ${response.episodeNum ?: "?"}",
+            id = response.id.toSafeString(),
+            episodeNum = response.episodeNum.toSafeInt(),
+            title = response.title ?: "Episodio ${response.episodeNum.toSafeString().ifBlank { "?" }}",
             containerExtension = response.containerExtension.orEmpty(),
             info = response.info?.let { toEpisodeInfo(it) },
             customSid = response.customSid,
-            added = response.added,
-            season = response.season?.toIntOrNull() ?: 0,
+            added = response.added.toSafeStringOrNull(),
+            season = response.season.toSafeInt(),
             directSource = response.directSource
         )
     }
 
     fun toEpisodeInfo(response: EpisodeInfoResponse): EpisodeInfo {
         return EpisodeInfo(
-            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId),
+            tmdbId = TmdbIdValidator.sanitizeTmdbId(response.tmdbId.toSafeStringOrNull()),
             releaseDate = response.releaseDate,
             plot = response.plot,
-            duration = response.duration ?: response.durationSecs?.let {
-                val seconds = it.toIntOrNull() ?: 0
-                "${seconds / 60} min"
+            duration = response.duration ?: response.durationSecs.toSafeInt().takeIf { it > 0 }?.let {
+                "${it / 60} min"
             },
-            rating = response.rating?.toFloatOrNull() ?: 0f,
+            rating = response.rating.toSafeFloat(),
             cover = response.cover ?: response.coverBig ?: response.movieImage
         )
     }
@@ -165,12 +209,12 @@ object ResponseMapper {
     fun toVodInfo(response: VodInfoResponse): VodInfo? {
         val info = response.info ?: return null
         val backdrops = when {
-            !info.backdropPath.isNullOrEmpty() -> info.backdropPath
+            info.backdropPath != null -> info.backdropPath.toSafeStringList().takeIf { it.isNotEmpty() }
             !info.backdrop.isNullOrBlank() -> listOf(info.backdrop)
             else -> null
         }
         return VodInfo(
-            tmdbId = TmdbIdValidator.sanitizeTmdbId(info.tmdbId),
+            tmdbId = TmdbIdValidator.sanitizeTmdbId(info.tmdbId.toSafeStringOrNull()),
             name = info.name ?: "",
             originalName = info.originalName,
             coverBig = info.coverBig,
@@ -185,15 +229,15 @@ object ResponseMapper {
             plot = info.plot,
             age = info.age,
             mpaaRating = info.mpaaRating,
-            rating = info.rating,
-            rating5Based = info.rating5Based,
+            rating = info.rating.toSafeStringOrNull(),
+            rating5Based = info.rating5Based.toSafeFloat().takeIf { it > 0f }?.toDouble(),
             country = info.country,
             genre = info.genre,
             backdropPath = backdrops,
-            durationSecs = info.durationSecs,
+            durationSecs = info.durationSecs.toSafeInt().takeIf { it > 0 },
             video = info.video,
             audio = info.audio,
-            bitrate = info.bitrate
+            bitrate = info.bitrate.toSafeInt().takeIf { it > 0 }
         )
     }
 }
