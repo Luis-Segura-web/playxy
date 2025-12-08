@@ -125,6 +125,12 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private var currentRequest: PlaybackRequest? = null
     private var progressJob: Job? = null
     private var trackLookup: Map<String, TrackOption> = emptyMap()
+    
+    // Auto-retry configuration
+    private var retryCount = 0
+    private var retryJob: Job? = null
+    private val maxRetries = 3
+    private val retryDelayMs = 2000L
 
     init {
         player.addListener(object : Player.Listener {
@@ -137,6 +143,8 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                     )
                 }
                 if (playbackState == Player.STATE_READY) {
+                    // Reset retry count on successful playback
+                    retryCount = 0
                     updateProgress()
                 }
             }
@@ -147,20 +155,36 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "Playback error", error)
-                _uiState.update {
-                    it.copy(
-                        hasError = true,
-                        errorMessage = error.localizedMessage ?: "Error de reproducción",
-                        isPlaying = false,
-                        isBuffering = false
-                    )
+                Log.e(TAG, "Playback error (retry $retryCount/$maxRetries)", error)
+                
+                // Attempt auto-retry
+                if (retryCount < maxRetries && currentRequest != null) {
+                    retryCount++
+                    _uiState.update {
+                        it.copy(
+                            isBuffering = true,
+                            hasError = false,
+                            errorMessage = "Reintentando... ($retryCount/$maxRetries)"
+                        )
+                    }
+                    scheduleRetry()
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            hasError = true,
+                            errorMessage = error.localizedMessage ?: "Error de reproducción",
+                            isPlaying = false,
+                            isBuffering = false
+                        )
+                    }
+                    updateForegroundPlayback(false)
                 }
-                updateForegroundPlayback(false)
             }
 
             override fun onRenderedFirstFrame() {
                 _uiState.update { it.copy(firstFrameRendered = true, isBuffering = false) }
+                // Reset retry count when first frame is rendered
+                retryCount = 0
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -169,6 +193,17 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         })
 
         startProgressUpdates()
+    }
+    
+    private fun scheduleRetry() {
+        retryJob?.cancel()
+        retryJob = scope.launch {
+            delay(retryDelayMs)
+            currentRequest?.let { request ->
+                Log.d(TAG, "Auto-retrying playback: ${request.url}")
+                playMedia(request.url, request.type, forcePrepare = true)
+            }
+        }
     }
 
     private fun startProgressUpdates() {
@@ -196,6 +231,10 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     fun playMedia(url: String, type: PlayerType = PlayerType.TV, forcePrepare: Boolean = false) {
         if (url.isBlank()) return
+        
+        // Cancel any pending retry when starting new playback
+        retryJob?.cancel()
+        
         val lastRequest = currentRequest
         if (!forcePrepare && lastRequest?.url == url && lastRequest.type == type) {
             if (player.playbackState == Player.STATE_IDLE) {
@@ -206,6 +245,11 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
             return
         }
 
+        // Reset retry count only when starting a completely new URL
+        if (lastRequest?.url != url) {
+            retryCount = 0
+        }
+        
         currentRequest = PlaybackRequest(url, type)
         player.setMediaItem(buildMediaItem(url, type))
         player.prepare()
@@ -255,6 +299,10 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     }
 
     fun stopPlayback() {
+        // Cancel any pending retry
+        retryJob?.cancel()
+        retryCount = 0
+        
         player.stop()
         player.clearMediaItems()
         currentRequest = null
@@ -315,6 +363,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     fun release() {
         progressJob?.cancel()
+        retryJob?.cancel()
         currentPlayerView?.let { PlayerView.switchTargetView(player, it, null) }
         currentPlayerView = null
         player.release()

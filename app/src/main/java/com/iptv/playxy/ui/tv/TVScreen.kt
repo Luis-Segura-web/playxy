@@ -54,6 +54,18 @@ fun TVScreen(
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     val fullscreenState = LocalFullscreenState.current
     val isFullscreen = fullscreenState.value
+    
+    // Navegación de canales
+    val hasPrevious = viewModel.hasPreviousChannel()
+    val hasNext = viewModel.hasNextChannel()
+
+    // Actualizar la lista de canales cuando cambia el paging
+    LaunchedEffect(channelsPaging.itemSnapshotList) {
+        val items = channelsPaging.itemSnapshotList.items
+        if (items.isNotEmpty()) {
+            viewModel.updateChannelList(items)
+        }
+    }
 
     var isChannelSwitching by remember { mutableStateOf(false) }
     var showPinDialog by remember { mutableStateOf(false) }
@@ -129,10 +141,11 @@ fun TVScreen(
             playerManager.setTransportActions(
                 onNext = {
                     isChannelSwitching = true
-                    // navigation not kept in paging demo
+                    viewModel.playNextChannel()
                 },
                 onPrevious = {
                     isChannelSwitching = true
+                    viewModel.playPreviousChannel()
                 }
             )
             onDispose { playerManager.setTransportActions(null, null) }
@@ -142,7 +155,11 @@ fun TVScreen(
             title = currentChannel!!.name,
             playerType = PlayerType.TV,
             playerManager = playerManager,
-            onBack = { fullscreenState.value = false }
+            onBack = { fullscreenState.value = false },
+            onPreviousItem = { viewModel.playPreviousChannel() },
+            onNextItem = { viewModel.playNextChannel() },
+            hasPrevious = hasPrevious,
+            hasNext = hasNext
         )
     } else {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -153,8 +170,10 @@ fun TVScreen(
                     streamUrl = StreamUrlBuilder.buildLiveStreamUrl(userProfile!!, currentChannel!!),
                     channelName = currentChannel!!.name,
                     playerManager = playerManager,
-                    onPreviousChannel = {},
-                    onNextChannel = {},
+                    onPreviousChannel = { viewModel.playPreviousChannel() },
+                    onNextChannel = { viewModel.playNextChannel() },
+                    hasPrevious = hasPrevious,
+                    hasNext = hasNext,
                     onClose = {
                         isChannelSwitching = false
                         playerManager.stopPlayback()

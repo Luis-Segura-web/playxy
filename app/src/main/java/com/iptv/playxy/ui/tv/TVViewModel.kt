@@ -58,7 +58,12 @@ class TVViewModel @Inject constructor(
     private val _userProfile = MutableStateFlow<UserProfile?>(null)
     val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
 
-    private val orderedChannels = mutableListOf<LiveStream>()
+    // Lista ordenada de canales para navegación
+    private val _orderedChannels = MutableStateFlow<List<LiveStream>>(emptyList())
+    val orderedChannels: StateFlow<List<LiveStream>> = _orderedChannels.asStateFlow()
+
+    private val _currentChannelIndex = MutableStateFlow(-1)
+    val currentChannelIndex: StateFlow<Int> = _currentChannelIndex.asStateFlow()
 
     init {
         loadUserProfile()
@@ -225,9 +230,52 @@ class TVViewModel @Inject constructor(
     fun playChannel(channel: LiveStream) {
         viewModelScope.launch {
             _currentChannel.value = channel
+            // Actualizar el índice del canal actual
+            val channels = _orderedChannels.value
+            val index = channels.indexOfFirst { it.streamId == channel.streamId }
+            _currentChannelIndex.value = index
             addChannelToRecents(channel)
             startChannelPlayback(channel)
         }
+    }
+
+    fun updateChannelList(channels: List<LiveStream>) {
+        _orderedChannels.value = channels
+        // Actualizar índice si el canal actual está en la lista
+        _currentChannel.value?.let { current ->
+            val index = channels.indexOfFirst { it.streamId == current.streamId }
+            _currentChannelIndex.value = index
+        }
+    }
+
+    fun playPreviousChannel(): Boolean {
+        val channels = _orderedChannels.value
+        val currentIndex = _currentChannelIndex.value
+        if (channels.isEmpty() || currentIndex <= 0) return false
+        
+        val previousChannel = channels[currentIndex - 1]
+        playChannel(previousChannel)
+        return true
+    }
+
+    fun playNextChannel(): Boolean {
+        val channels = _orderedChannels.value
+        val currentIndex = _currentChannelIndex.value
+        if (channels.isEmpty() || currentIndex < 0 || currentIndex >= channels.size - 1) return false
+        
+        val nextChannel = channels[currentIndex + 1]
+        playChannel(nextChannel)
+        return true
+    }
+
+    fun hasPreviousChannel(): Boolean {
+        return _currentChannelIndex.value > 0
+    }
+
+    fun hasNextChannel(): Boolean {
+        val channels = _orderedChannels.value
+        val currentIndex = _currentChannelIndex.value
+        return currentIndex >= 0 && currentIndex < channels.size - 1
     }
 
     private suspend fun addChannelToRecents(channel: LiveStream) {

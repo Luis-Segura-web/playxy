@@ -75,7 +75,8 @@ internal fun MiniPlayerContainer(
             }
         }
 
-        if (!hideUiForPip && uiState.isBuffering && !uiState.firstFrameRendered) {
+        // Mostrar indicador de buffering siempre que esté cargando
+        if (!hideUiForPip && uiState.isBuffering) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
                 color = Color.White

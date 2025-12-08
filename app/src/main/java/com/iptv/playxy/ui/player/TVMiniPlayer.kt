@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.playxy.ui.LocalPipController
 
 @Composable
 fun TVMiniPlayer(
@@ -48,10 +51,13 @@ fun TVMiniPlayer(
     onNextChannel: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    hasPrevious: Boolean = true,
+    hasNext: Boolean = true,
     onFullscreen: () -> Unit = {}
 ) {
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
+    val pipController = LocalPipController.current
 
     LaunchedEffect(streamUrl) {
         if (playbackState.streamUrl != streamUrl) {
@@ -73,6 +79,8 @@ fun TVMiniPlayer(
                     state = state,
                     channelName = channelName,
                     hasTrackOptions = state.tracks.hasDialogOptions,
+                    hasPrevious = hasPrevious,
+                    hasNext = hasNext,
                     onClose = {
                         onClose()
                         setControlsVisible(true)
@@ -87,7 +95,8 @@ fun TVMiniPlayer(
                         setControlsVisible(true)
                         showTrackDialog = true
                     },
-                    onFullscreen = onFullscreen
+                    onFullscreen = onFullscreen,
+                    onPip = { pipController.requestPip(onClose = onClose) }
                 )
             }
         )
@@ -110,13 +119,16 @@ private fun TVMiniOverlay(
     state: PlaybackUiState,
     channelName: String,
     hasTrackOptions: Boolean,
+    hasPrevious: Boolean,
+    hasNext: Boolean,
     onClose: () -> Unit,
     onReplay: () -> Unit,
     onTogglePlay: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onShowTracks: () -> Unit,
-    onFullscreen: () -> Unit
+    onFullscreen: () -> Unit,
+    onPip: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -176,9 +188,14 @@ private fun TVMiniOverlay(
             ) {
                 IconButton(
                     onClick = onPrevious,
+                    enabled = hasPrevious,
                     modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape)
                 ) {
-                    Icon(imageVector = Icons.Default.SkipPrevious, contentDescription = "Anterior", tint = Color.White)
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Anterior",
+                        tint = if (hasPrevious) Color.White else Color.Gray
+                    )
                 }
                 IconButton(
                     onClick = { if (state.hasError) onReplay() else onTogglePlay() },
@@ -192,9 +209,14 @@ private fun TVMiniOverlay(
                 }
                 IconButton(
                     onClick = onNext,
+                    enabled = hasNext,
                     modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape)
                 ) {
-                    Icon(imageVector = Icons.Default.SkipNext, contentDescription = "Siguiente", tint = Color.White)
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Siguiente",
+                        tint = if (hasNext) Color.White else Color.Gray
+                    )
                 }
             }
         }
@@ -218,6 +240,13 @@ private fun TVMiniOverlay(
                     IconButton(onClick = onShowTracks) {
                         Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
                     }
+                }
+                IconButton(onClick = onPip) {
+                    Icon(
+                        imageVector = Icons.Default.PictureInPicture,
+                        contentDescription = "Picture in Picture",
+                        tint = Color.White
+                    )
                 }
                 IconButton(onClick = onFullscreen) {
                     Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Pantalla completa", tint = Color.White)

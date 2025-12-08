@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay10
@@ -49,6 +50,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.playxy.ui.LocalPipController
 
 @Composable
 fun FullscreenPlayer(
@@ -66,6 +68,7 @@ fun FullscreenPlayer(
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
     val playerContainer = LocalPlayerContainerHost.current
+    val pipController = LocalPipController.current
 
     BackHandler { onBack() }
 
@@ -109,7 +112,8 @@ fun FullscreenPlayer(
                     onPrevious = onPreviousItem,
                     onNext = onNextItem,
                     enablePrevious = hasPrevious,
-                    enableNext = hasNext
+                    enableNext = hasNext,
+                    onPip = { pipController.requestPip(onClose = onBack) }
                 )
             }
         )
@@ -146,7 +150,8 @@ private fun FullscreenOverlay(
     onPrevious: (() -> Unit)?,
     onNext: (() -> Unit)?,
     enablePrevious: Boolean,
-    enableNext: Boolean
+    enableNext: Boolean,
+    onPip: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -165,7 +170,7 @@ private fun FullscreenOverlay(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -181,9 +186,18 @@ private fun FullscreenOverlay(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                 }
-                if (hasTrackOptions) {
-                    IconButton(onClick = onShowTracks) {
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
+                Row {
+                    IconButton(onClick = onPip) {
+                        Icon(
+                            imageVector = Icons.Default.PictureInPicture,
+                            contentDescription = "Picture in Picture",
+                            tint = Color.White
+                        )
+                    }
+                    if (hasTrackOptions) {
+                        IconButton(onClick = onShowTracks) {
+                            Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
+                        }
                     }
                 }
             }

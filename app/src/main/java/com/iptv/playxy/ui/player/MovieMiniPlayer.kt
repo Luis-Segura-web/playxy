@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay10
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.playxy.ui.LocalPipController
 
 @Composable
 fun MovieMiniPlayer(
@@ -51,6 +53,7 @@ fun MovieMiniPlayer(
 ) {
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
+    val pipController = LocalPipController.current
 
     val playerContainer = LocalPlayerContainerHost.current
 
@@ -87,7 +90,8 @@ fun MovieMiniPlayer(
                         showTrackDialog = true
                     },
                     onSeek = { position -> playerManager.seekTo(position) },
-                    hasTrackOptions = state.tracks.hasDialogOptions
+                    hasTrackOptions = state.tracks.hasDialogOptions,
+                    onPip = { pipController.requestPip(onClose = onClose) }
                 )
             }
         )
@@ -117,7 +121,8 @@ private fun MovieMiniPlayerOverlay(
     onFullscreen: () -> Unit,
     onShowTracks: () -> Unit,
     onSeek: (Long) -> Unit,
-    hasTrackOptions: Boolean
+    hasTrackOptions: Boolean,
+    onPip: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -217,6 +222,13 @@ private fun MovieMiniPlayerOverlay(
                         IconButton(onClick = onShowTracks) {
                             Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
                         }
+                    }
+                    IconButton(onClick = onPip) {
+                        Icon(
+                            imageVector = Icons.Default.PictureInPicture,
+                            contentDescription = "Picture in Picture",
+                            tint = Color.White
+                        )
                     }
                     IconButton(onClick = onFullscreen) {
                         Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Pantalla completa", tint = Color.White)
