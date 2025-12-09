@@ -31,6 +31,7 @@ data class VodInfo(
     @field:Json(name = "age") val age: String?,
     @field:Json(name = "mpaa_rating") val mpaaRating: String?,
     @field:Json(name = "rating_count_kinopoisk") val ratingCountKinopoisk: Any?,  // Can be String or Int
+    @field:Json(name = "kinopoisk_url") val kinopoiskUrl: String?,  // URL to Kinopoisk/TMDB page
     @field:Json(name = "rating") val rating: Any?,  // Can be String or number
     @field:Json(name = "rating_5based") val rating5Based: Any?,  // Can be String, Double, Int
     @field:Json(name = "country") val country: String?,

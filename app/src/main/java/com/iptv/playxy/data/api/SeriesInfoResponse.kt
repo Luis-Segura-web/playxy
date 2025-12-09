@@ -15,6 +15,7 @@ data class SeriesInfoResponse(
 
 @JsonClass(generateAdapter = true)
 data class SeasonResponse(
+    @Json(name = "id") val id: Any?,  // Season TMDB ID - Can be Int or String
     @Json(name = "season_number") val seasonNumber: Any?,  // Can be Int or String
     @Json(name = "name") val name: String?,
     @Json(name = "episode_count") val episodeCount: Any?,  // Can be Int or String
@@ -49,10 +50,14 @@ data class EpisodeInfoResponse(
     @Json(name = "audio") val audio: Any?,
     @Json(name = "bitrate") val bitrate: Any?,  // Can be Int or String
     @Json(name = "rating") val rating: Any?,  // Can be String or number
+    @Json(name = "rating_5based") val rating5Based: Any?,  // Can be String, Double, Int
     @Json(name = "season") val season: Any?,  // Can be Int or String
     @Json(name = "cover") val cover: String?,
     @Json(name = "cover_big") val coverBig: String?,
-    @Json(name = "movie_image") val movieImage: String?
+    @Json(name = "movie_image") val movieImage: String?,
+    @Json(name = "youtube_trailer") val youtubeTrailer: String?,
+    @Json(name = "cast") val cast: String?,
+    @Json(name = "director") val director: String?
 )
 
 @JsonClass(generateAdapter = true)

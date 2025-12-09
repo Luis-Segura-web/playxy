@@ -57,7 +57,7 @@ class IptvRepository @Inject constructor(
     private val seriesInfoCacheMutex = Mutex()
     private val seriesInfoCache = mutableMapOf<String, CachedSeriesInfo>()
     private val actorCacheMutex = Mutex()
-    private val actorCache = mutableMapOf<Int, CachedActorDetails>()
+    private val actorCache = mutableMapOf<String, CachedActorDetails>()  // Key: "${actorId}_${catalogHasTmdb}"
     private val tmdbApiService: TmdbApiService by lazy {
         apiServiceFactory.createTmdbService(TMDB_API_KEY)
     }
@@ -146,76 +146,129 @@ class IptvRepository @Inject constructor(
     
     // Content loading operations
     suspend fun loadAllContent(username: String, password: String): Result<Unit> {
-        return loadAllContent(username, password) {}
+        val result = loadAllContent(username, password, onStep = {}, previousState = null)
+        return result.result
     }
 
+    /**
+     * Load all content with incremental retry support.
+     * Only retries components that failed, preserving successfully downloaded content.
+     */
     suspend fun loadAllContent(
         username: String,
         password: String,
-        onStep: (ContentLoadStage) -> Unit
-    ): Result<Unit> {
+        onStep: (ContentLoadStage) -> Unit,
+        previousState: ContentLoadState? = null
+    ): ContentLoadResult {
+        val state = previousState ?: ContentLoadState()
+        
         return try {
             // Get the user profile to obtain the base URL
             val profile = userProfileDao.getProfile()
             if (profile == null) {
-                return Result.failure(Exception("No user profile found"))
+                return ContentLoadResult(
+                    state = state,
+                    result = Result.failure(Exception("No user profile found"))
+                )
             }
 
             // Create API service with the user's base URL
             onStep(ContentLoadStage.CONNECTING)
             val apiService = apiServiceFactory.createService(profile.url)
 
-            // Descargas concurrentes, pero avances de UI secuenciales por tipo.
             coroutineScope {
-                // Lanzamos descargas en paralelo
-                val liveStreamsDeferred = async { downloadLiveStreams(apiService, username, password) }
-                val liveCategoriesDeferred = async { downloadLiveCategories(apiService, username, password) }
-                val vodStreamsDeferred = async { downloadVodStreams(apiService, username, password) }
-                val vodCategoriesDeferred = async { downloadVodCategories(apiService, username, password) }
-                val seriesStreamsDeferred = async { downloadSeries(apiService, username, password) }
-                val seriesCategoriesDeferred = async { downloadSeriesCategories(apiService, username, password) }
+                // Download live content if not already completed
+                if (!state.liveCompleted) {
+                    try {
+                        onStep(ContentLoadStage.DOWNLOADING_LIVE)
+                        val liveStreamsDeferred = async { downloadLiveStreams(apiService, username, password) }
+                        val liveCategoriesDeferred = async { downloadLiveCategories(apiService, username, password) }
+                        
+                        val liveStreams = liveStreamsDeferred.await()
+                        val liveCategories = liveCategoriesDeferred.await()
+                        
+                        onStep(ContentLoadStage.PROCESSING_LIVE)
+                        awaitAll(
+                            async { persistLiveStreams(liveStreams) },
+                            async { persistCategories(liveCategories, "live") }
+                        )
+                        
+                        state.liveCompleted = true
+                        state.liveError = null
+                        cacheMetadataDao.insertCacheMetadata(CacheMetadata(liveCacheKey, System.currentTimeMillis()))
+                    } catch (e: Exception) {
+                        state.liveError = e.message
+                    }
+                }
 
-                onStep(ContentLoadStage.DOWNLOADING_LIVE)
-                val liveStreams = liveStreamsDeferred.await()
-                val liveCategories = liveCategoriesDeferred.await()
-                onStep(ContentLoadStage.PROCESSING_LIVE)
-                awaitAll(
-                    async { persistLiveStreams(liveStreams) },
-                    async { persistCategories(liveCategories, "live") }
-                )
+                // Download VOD content if not already completed
+                if (!state.vodCompleted) {
+                    try {
+                        onStep(ContentLoadStage.DOWNLOADING_VOD)
+                        val vodStreamsDeferred = async { downloadVodStreams(apiService, username, password) }
+                        val vodCategoriesDeferred = async { downloadVodCategories(apiService, username, password) }
+                        
+                        val vodStreams = vodStreamsDeferred.await()
+                        val vodCategories = vodCategoriesDeferred.await()
+                        
+                        onStep(ContentLoadStage.PROCESSING_VOD)
+                        awaitAll(
+                            async { persistVodStreams(vodStreams) },
+                            async { persistCategories(vodCategories, "vod") }
+                        )
+                        
+                        state.vodCompleted = true
+                        state.vodError = null
+                        cacheMetadataDao.insertCacheMetadata(CacheMetadata(vodCacheKey, System.currentTimeMillis()))
+                    } catch (e: Exception) {
+                        state.vodError = e.message
+                    }
+                }
 
-                onStep(ContentLoadStage.DOWNLOADING_VOD)
-                val vodStreams = vodStreamsDeferred.await()
-                val vodCategories = vodCategoriesDeferred.await()
-                onStep(ContentLoadStage.PROCESSING_VOD)
-                awaitAll(
-                    async { persistVodStreams(vodStreams) },
-                    async { persistCategories(vodCategories, "vod") }
-                )
-
-                onStep(ContentLoadStage.DOWNLOADING_SERIES)
-                val seriesStreams = seriesStreamsDeferred.await()
-                val seriesCategories = seriesCategoriesDeferred.await()
-                onStep(ContentLoadStage.PROCESSING_SERIES)
-                awaitAll(
-                    async { persistSeries(seriesStreams) },
-                    async { persistCategories(seriesCategories, "series") }
-                )
+                // Download series content if not already completed
+                if (!state.seriesCompleted) {
+                    try {
+                        onStep(ContentLoadStage.DOWNLOADING_SERIES)
+                        val seriesStreamsDeferred = async { downloadSeries(apiService, username, password) }
+                        val seriesCategoriesDeferred = async { downloadSeriesCategories(apiService, username, password) }
+                        
+                        val seriesStreams = seriesStreamsDeferred.await()
+                        val seriesCategories = seriesCategoriesDeferred.await()
+                        
+                        onStep(ContentLoadStage.PROCESSING_SERIES)
+                        awaitAll(
+                            async { persistSeries(seriesStreams) },
+                            async { persistCategories(seriesCategories, "series") }
+                        )
+                        
+                        state.seriesCompleted = true
+                        state.seriesError = null
+                        cacheMetadataDao.insertCacheMetadata(CacheMetadata(seriesCacheKey, System.currentTimeMillis()))
+                    } catch (e: Exception) {
+                        state.seriesError = e.message
+                    }
+                }
 
                 onStep(ContentLoadStage.LOADING_CATEGORIES)
 
-                // Update cache metadata
-                val currentTime = System.currentTimeMillis()
-                cacheMetadataDao.insertCacheMetadata(CacheMetadata(allCacheKey, currentTime))
-                cacheMetadataDao.insertCacheMetadata(CacheMetadata(liveCacheKey, currentTime))
-                cacheMetadataDao.insertCacheMetadata(CacheMetadata(vodCacheKey, currentTime))
-                cacheMetadataDao.insertCacheMetadata(CacheMetadata(seriesCacheKey, currentTime))
+                // Update all cache metadata only if everything completed
+                if (state.isFullyCompleted()) {
+                    val currentTime = System.currentTimeMillis()
+                    cacheMetadataDao.insertCacheMetadata(CacheMetadata(allCacheKey, currentTime))
+                }
             }
             
-            Result.success(Unit)
+            ContentLoadResult(
+                state = state,
+                result = if (state.isFullyCompleted()) Result.success(Unit) 
+                        else Result.failure(Exception(state.getErrorSummary()))
+            )
         } catch (e: Exception) {
             e.printStackTrace()
-            Result.failure(e)
+            ContentLoadResult(
+                state = state,
+                result = Result.failure(e)
+            )
         }
     }
     
@@ -709,7 +762,7 @@ class IptvRepository @Inject constructor(
         }
     }
 
-    private suspend fun getCachedActor(actorId: Int): com.iptv.playxy.domain.ActorDetails? {
+    private suspend fun getCachedActorByKey(cacheKey: String): com.iptv.playxy.domain.ActorDetails? {
         val now = System.currentTimeMillis()
         return actorCacheMutex.withLock {
             val iterator = actorCache.entries.iterator()
@@ -717,13 +770,13 @@ class IptvRepository @Inject constructor(
                 val entry = iterator.next()
                 if (now - entry.value.timestamp > actorCacheTtlMs) iterator.remove()
             }
-            actorCache[actorId]?.takeIf { now - it.timestamp <= actorCacheTtlMs }?.details
+            actorCache[cacheKey]?.takeIf { now - it.timestamp <= actorCacheTtlMs }?.details
         }
     }
 
-    private suspend fun cacheActor(actorId: Int, details: com.iptv.playxy.domain.ActorDetails) {
+    private suspend fun cacheActorByKey(cacheKey: String, details: com.iptv.playxy.domain.ActorDetails) {
         actorCacheMutex.withLock {
-            actorCache[actorId] = CachedActorDetails(details, System.currentTimeMillis())
+            actorCache[cacheKey] = CachedActorDetails(details, System.currentTimeMillis())
         }
     }
 
@@ -757,26 +810,38 @@ class IptvRepository @Inject constructor(
         }
     }
 
-    suspend fun getActorDetails(cast: TmdbCast): com.iptv.playxy.domain.ActorDetails? {
+    /**
+     * Get actor details from TMDB
+     * @param cast The TmdbCast object with actor info
+     * @param catalogHasTmdb If true, search for available movies/series in the service. If false, show all as unavailable.
+     */
+    suspend fun getActorDetails(cast: TmdbCast, catalogHasTmdb: Boolean = false): com.iptv.playxy.domain.ActorDetails? {
         if (!isTmdbEnabled()) return null
         val castId = cast.id ?: return null
-        getCachedActor(castId)?.let { return it }
+        // Cache key includes catalogHasTmdb to separate results
+        val cacheKey = "${castId}_$catalogHasTmdb"
+        getCachedActorByKey(cacheKey)?.let { return it }
         return try {
             val response = tmdbApiService.getPerson(castId.toString())
             if (response.isSuccessful) {
                 val body = response.body() ?: return null
                 val profile = cast.profile ?: tmdbProfileUrl(body.profilePath)
                 val credits = body.combinedCredits?.cast.orEmpty()
-                val allStreams = vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
-                // Filter streams with valid TMDB IDs to avoid grouping nulls together
-                val streamsByTmdb = allStreams
-                    .filter { !it.tmdbId.isNullOrBlank() }
-                    .groupBy { it.tmdbId }
-                val allSeries = seriesDao.getAllSeries().map { EntityMapper.seriesToDomain(it) }
-                // Filter series with valid TMDB IDs to avoid grouping nulls together
-                val seriesByTmdb = allSeries
-                    .filter { !it.tmdbId.isNullOrBlank() }
-                    .groupBy { it.tmdbId }
+                
+                // Solo buscar en la base de datos local si catalogHasTmdb es true
+                val streamsByTmdb: Map<String?, List<com.iptv.playxy.domain.VodStream>> = if (catalogHasTmdb) {
+                    val allStreams = vodStreamDao.getAllVodStreams().map { EntityMapper.vodStreamToDomain(it) }
+                    allStreams.filter { !it.tmdbId.isNullOrBlank() }.groupBy { it.tmdbId }
+                } else {
+                    emptyMap()
+                }
+                
+                val seriesByTmdb: Map<String?, List<com.iptv.playxy.domain.Series>> = if (catalogHasTmdb) {
+                    val allSeries = seriesDao.getAllSeries().map { EntityMapper.seriesToDomain(it) }
+                    allSeries.filter { !it.tmdbId.isNullOrBlank() }.groupBy { it.tmdbId }
+                } else {
+                    emptyMap()
+                }
 
                 fun mapMovieLinks(includeUnavailable: Boolean): List<com.iptv.playxy.domain.TmdbMovieLink> {
                     val list = mutableListOf<com.iptv.playxy.domain.TmdbMovieLink>()
@@ -892,7 +957,7 @@ class IptvRepository @Inject constructor(
                     unavailableMovies = unavailableMovies,
                     availableSeries = availableSeries,
                     unavailableSeries = unavailableSeries
-                ).also { cacheActor(castId, it) }
+                ).also { cacheActorByKey(cacheKey, it) }
             } else null
         } catch (e: Exception) {
             e.printStackTrace()
@@ -935,13 +1000,15 @@ class IptvRepository @Inject constructor(
         tmdb: TmdbMovieResponse,
         collection: TmdbCollectionResponse?
     ): VodInfo {
+        // Combinar todos los backdrops de TMDB (images.backdrops + backdrop_path principal)
         val backdropsFromImages = tmdb.images?.backdrops?.mapNotNull { it.filePath }.orEmpty()
-        val backdropList = when {
-            !provider.backdropPath.isNullOrEmpty() -> provider.backdropPath!!
-            !tmdb.backdropPath.isNullOrBlank() -> tmdbBackdropList(tmdb.backdropPath)
-            backdropsFromImages.isNotEmpty() -> tmdbBackdropList(null, backdropsFromImages)
-            else -> emptyList()
-        }
+        val tmdbBackdrops = tmdbBackdropList(tmdb.backdropPath, backdropsFromImages)
+        
+        // Lista final: TMDB primero, luego proveedor como fallback
+        val backdropList = buildList {
+            addAll(tmdbBackdrops)
+            provider.backdropPath?.let { addAll(it) }
+        }.distinct().filter { it.isNotBlank() }.ifEmpty { emptyList() }
         val poster = provider.movieImage ?: provider.coverBig ?: tmdbPosterUrl(tmdb.posterPath)
         val trailer = provider.youtubeTrailer ?: selectTrailerKey(tmdb.videos?.results)
         val director = provider.director
@@ -1083,13 +1150,15 @@ class IptvRepository @Inject constructor(
 
     private suspend fun mergeSeriesInfoWithTmdb(seriesInfo: SeriesInfo, tmdb: TmdbSeriesResponse): SeriesInfo {
         val provider = seriesInfo.info
+        // Combinar todos los backdrops de TMDB (images.backdrops + backdrop_path principal)
         val backdropsFromImages = tmdb.images?.backdrops?.mapNotNull { it.filePath }.orEmpty()
-        val backdropList = when {
-            provider.backdropPath.isNotEmpty() -> provider.backdropPath
-            !tmdb.backdropPath.isNullOrBlank() -> tmdbBackdropList(tmdb.backdropPath)
-            backdropsFromImages.isNotEmpty() -> tmdbBackdropList(null, backdropsFromImages)
-            else -> emptyList()
-        }
+        val tmdbBackdrops = tmdbBackdropList(tmdb.backdropPath, backdropsFromImages)
+        
+        // Lista final: TMDB primero, luego proveedor como fallback
+        val backdropList = buildList {
+            addAll(tmdbBackdrops)
+            addAll(provider.backdropPath)
+        }.distinct().filter { it.isNotBlank() }.ifEmpty { emptyList() }
         val poster = provider.cover ?: tmdbPosterUrl(tmdb.posterPath)
         val trailer = provider.youtubeTrailer ?: selectTrailerKey(tmdb.videos?.results)
         val director = provider.director
@@ -1238,14 +1307,23 @@ class IptvRepository @Inject constructor(
      */
     suspend fun getSeriesInfo(seriesId: String): SeriesInfo? {
         val useTmdb = isTmdbEnabled()
-        getCachedSeriesInfo(seriesId, useTmdb)?.let { return it }
+        getCachedSeriesInfo(seriesId, useTmdb)?.let { 
+            android.util.Log.d("IptvRepository", "getSeriesInfo($seriesId): returning cached data, episodes=${it.episodesBySeason.values.flatten().size}")
+            return it 
+        }
         return try {
             // Get the user profile to obtain credentials and base URL
-            val profile = userProfileDao.getProfile() ?: return null
+            val profile = userProfileDao.getProfile() ?: run {
+                android.util.Log.e("IptvRepository", "getSeriesInfo($seriesId): No user profile found")
+                return null
+            }
 
             // Get the series from cache to have base info
             val seriesEntity = seriesDao.getAllSeries().find { it.seriesId == seriesId }
-            val series = seriesEntity?.let { EntityMapper.seriesToDomain(it) } ?: return null
+            val series = seriesEntity?.let { EntityMapper.seriesToDomain(it) } ?: run {
+                android.util.Log.e("IptvRepository", "getSeriesInfo($seriesId): Series not found in local DB")
+                return null
+            }
 
             // Create API service with the user's base URL
             val apiService = apiServiceFactory.createService(profile.url)
@@ -1258,13 +1336,17 @@ class IptvRepository @Inject constructor(
             )
 
             if (response.isSuccessful && response.body() != null) {
-                val providerInfo = ResponseMapper.toSeriesInfo(response.body()!!, series)
+                val responseBody = response.body()!!
+                android.util.Log.d("IptvRepository", "getSeriesInfo response: seasons=${responseBody.seasons?.size}, episodes=${responseBody.episodes?.size}, info=${responseBody.info?.name}")
+                val providerInfo = ResponseMapper.toSeriesInfo(responseBody, series)
+                android.util.Log.d("IptvRepository", "getSeriesInfo parsed: seasons=${providerInfo.seasons.size}, episodesBySeason=${providerInfo.episodesBySeason.size}, totalEpisodes=${providerInfo.episodesBySeason.values.sumOf { it.size }}")
                 val merged = if (useTmdb && !providerInfo.info.tmdbId.isNullOrBlank()) {
                     val tmdbResponse = fetchTmdbSeries(providerInfo.info.tmdbId!!)
                     if (tmdbResponse != null) mergeSeriesInfoWithTmdb(providerInfo, tmdbResponse) else providerInfo
                 } else providerInfo
                 merged.also { cacheSeriesInfo(seriesId, it, useTmdb) }
             } else {
+                android.util.Log.e("IptvRepository", "getSeriesInfo($seriesId): API failed - code=${response.code()}, message=${response.message()}")
                 // Return empty series info if API call fails
                 SeriesInfo(
                     seasons = emptyList(),
@@ -1273,6 +1355,7 @@ class IptvRepository @Inject constructor(
                 )
             }
         } catch (e: Exception) {
+            android.util.Log.e("IptvRepository", "getSeriesInfo($seriesId): Exception - ${e.message}", e)
             e.printStackTrace()
             null
         }
@@ -1283,10 +1366,16 @@ class IptvRepository @Inject constructor(
      */
     suspend fun getVodInfo(vodId: String): VodInfo? {
         val useTmdb = isTmdbEnabled()
-        getCachedVodInfo(vodId, useTmdb)?.let { return it }
+        getCachedVodInfo(vodId, useTmdb)?.let { 
+            android.util.Log.d("IptvRepository", "getVodInfo($vodId): returning cached data, name=${it.name}")
+            return it 
+        }
         return try {
             // Get the user profile to obtain credentials and base URL
-            val profile = userProfileDao.getProfile() ?: return null
+            val profile = userProfileDao.getProfile() ?: run {
+                android.util.Log.e("IptvRepository", "getVodInfo($vodId): No user profile found")
+                return null
+            }
 
             // Create API service with the user's base URL
             val apiService = apiServiceFactory.createService(profile.url)
@@ -1299,7 +1388,10 @@ class IptvRepository @Inject constructor(
             )
 
             if (response.isSuccessful && response.body() != null) {
-                val providerInfo = ResponseMapper.toVodInfo(response.body()!!)
+                val responseBody = response.body()!!
+                android.util.Log.d("IptvRepository", "getVodInfo response: info=${responseBody.info?.name}, tmdbId=${responseBody.info?.tmdbId}, plot=${responseBody.info?.plot?.take(50)}")
+                val providerInfo = ResponseMapper.toVodInfo(responseBody)
+                android.util.Log.d("IptvRepository", "getVodInfo parsed: name=${providerInfo?.name}, plot=${providerInfo?.plot?.take(50)}, tmdbId=${providerInfo?.tmdbId}")
                 val merged = if (useTmdb && providerInfo != null && !providerInfo.tmdbId.isNullOrBlank()) {
                     val tmdbResponse = fetchTmdbMovie(providerInfo.tmdbId!!)
                     val collection = tmdbResponse?.belongsToCollection?.id?.let { fetchTmdbCollection(it) }
@@ -1307,9 +1399,11 @@ class IptvRepository @Inject constructor(
                 } else providerInfo
                 merged?.also { cacheVodInfo(vodId, it, useTmdb) }
             } else {
+                android.util.Log.e("IptvRepository", "getVodInfo($vodId): API failed - code=${response.code()}, message=${response.message()}")
                 null
             }
         } catch (e: Exception) {
+            android.util.Log.e("IptvRepository", "getVodInfo($vodId): Exception - ${e.message}", e)
             e.printStackTrace()
             null
         }
@@ -1481,3 +1575,46 @@ enum class ContentLoadStage {
     PROCESSING_SERIES,
     LOADING_CATEGORIES
 }
+
+/**
+ * Tracks the state of incremental content loading.
+ * Allows retrying only failed components while preserving successful downloads.
+ */
+data class ContentLoadState(
+    var liveCompleted: Boolean = false,
+    var vodCompleted: Boolean = false,
+    var seriesCompleted: Boolean = false,
+    var liveError: String? = null,
+    var vodError: String? = null,
+    var seriesError: String? = null
+) {
+    fun isFullyCompleted(): Boolean = liveCompleted && vodCompleted && seriesCompleted
+    
+    fun hasAnyError(): Boolean = liveError != null || vodError != null || seriesError != null
+    
+    fun hasPendingWork(): Boolean = !liveCompleted || !vodCompleted || !seriesCompleted
+    
+    fun getErrorSummary(): String {
+        val errors = mutableListOf<String>()
+        if (liveError != null) errors.add("Canales: $liveError")
+        if (vodError != null) errors.add("Películas: $vodError")
+        if (seriesError != null) errors.add("Series: $seriesError")
+        return errors.joinToString("; ")
+    }
+    
+    fun getCompletedCount(): Int {
+        var count = 0
+        if (liveCompleted) count++
+        if (vodCompleted) count++
+        if (seriesCompleted) count++
+        return count
+    }
+}
+
+/**
+ * Result of a content load operation, including the state for potential retry.
+ */
+data class ContentLoadResult(
+    val state: ContentLoadState,
+    val result: Result<Unit>
+)

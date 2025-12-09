@@ -10,16 +10,16 @@ object Routes {
     const val MAIN = "main"
     const val MOVIE_DETAIL = "movie_detail/{streamId}/{categoryId}?fromLink={fromLink}"
     const val SERIES_DETAIL = "series_detail/{seriesId}/{categoryId}"
-    const val ACTOR_DETAIL = "actor_detail/{actorId}?actorName={actorName}&actorProfile={actorProfile}"
+    const val ACTOR_DETAIL = "actor_detail/{actorId}?actorName={actorName}&actorProfile={actorProfile}&catalogHasTmdb={catalogHasTmdb}"
 
     fun movieDetail(streamId: String, categoryId: String, fromLink: Boolean = false) =
         "movie_detail/$streamId/$categoryId?fromLink=$fromLink"
     fun seriesDetail(seriesId: String, categoryId: String) = "series_detail/$seriesId/$categoryId"
-    fun actorDetail(cast: com.iptv.playxy.domain.TmdbCast): String {
+    fun actorDetail(cast: com.iptv.playxy.domain.TmdbCast, catalogHasTmdb: Boolean = false): String {
         val encodedName = android.net.Uri.encode(cast.name)
         val encodedProfile = android.net.Uri.encode(cast.profile ?: "")
         val actorId = cast.id ?: -1
-        return "actor_detail/$actorId?actorName=$encodedName&actorProfile=$encodedProfile"
+        return "actor_detail/$actorId?actorName=$encodedName&actorProfile=$encodedProfile&catalogHasTmdb=$catalogHasTmdb"
     }
 }
 

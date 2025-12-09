@@ -60,6 +60,7 @@ fun ActorDetailScreen(
     actorId: Int,
     fallbackName: String,
     fallbackProfile: String,
+    catalogHasTmdb: Boolean = false,
     onBack: () -> Unit,
     onNavigateToMovie: (String, String) -> Unit,
     onNavigateToSeries: (String, String) -> Unit,
@@ -72,8 +73,8 @@ fun ActorDetailScreen(
     var selectedUnavailableSeries by remember { mutableStateOf<TmdbSeriesLink?>(null) }
     var selectedTab by remember { mutableStateOf(0) }
 
-    LaunchedEffect(actorId) {
-        viewModel.loadActorDetails(actorId, fallbackName, fallbackProfile.takeIf { it.isNotBlank() })
+    LaunchedEffect(actorId, catalogHasTmdb) {
+        viewModel.loadActorDetails(actorId, fallbackName, fallbackProfile.takeIf { it.isNotBlank() }, catalogHasTmdb)
     }
 
     Scaffold(
@@ -201,7 +202,9 @@ fun ActorDetailScreen(
 
                         when (selectedTab) {
                             0 -> {
-                                if (actor.availableMovies.isNotEmpty()) {
+                                // Si hay rastreo TMDB, mostrar secciones separadas
+                                // Si no hay rastreo, mostrar todo como filmografía sin buscar disponibilidad
+                                if (catalogHasTmdb && actor.availableMovies.isNotEmpty()) {
                                     item {
                                         Text(
                                             text = "Disponibles en el servicio",
@@ -228,7 +231,7 @@ fun ActorDetailScreen(
                                 if (actor.unavailableMovies.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = "Fuera del servicio",
+                                            text = if (catalogHasTmdb) "Fuera del servicio" else "Filmografía",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.SemiBold
                                         )
@@ -236,7 +239,7 @@ fun ActorDetailScreen(
                                     items(actor.unavailableMovies) { movie ->
                                         FilmographyCard(
                                             item = movie,
-                                            showAvailability = true,
+                                            showAvailability = catalogHasTmdb,  // Solo mostrar chip cuando hay rastreo
                                             enabled = true,
                                             onClick = { selectedUnavailableMovie = movie }
                                         )
@@ -244,7 +247,7 @@ fun ActorDetailScreen(
                                 }
                             }
                             1 -> {
-                                if (actor.availableSeries.isNotEmpty()) {
+                                if (catalogHasTmdb && actor.availableSeries.isNotEmpty()) {
                                     item {
                                         Text(
                                             text = "Disponibles en el servicio",
@@ -270,7 +273,7 @@ fun ActorDetailScreen(
                                 if (actor.unavailableSeries.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = "Fuera del servicio",
+                                            text = if (catalogHasTmdb) "Fuera del servicio" else "Filmografía",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.SemiBold
                                         )
@@ -278,7 +281,7 @@ fun ActorDetailScreen(
                                     items(actor.unavailableSeries) { serie ->
                                         SeriesFilmographyCard(
                                             item = serie,
-                                            showAvailability = true,
+                                            showAvailability = catalogHasTmdb,  // Solo mostrar chip cuando hay rastreo
                                             enabled = true,
                                             onClick = { selectedUnavailableSeries = serie }
                                         )

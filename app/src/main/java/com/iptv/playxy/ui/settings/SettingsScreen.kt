@@ -263,20 +263,20 @@ fun ModernSettingsScreen(
                                     pinPromptError = null
                                     val hasPin = viewModel.hasPinConfigured()
                                     if (checked) {
+                                        // Activar control parental
                                         if (!hasPin) {
+                                            // Sin PIN → crear PIN primero, luego ir a categorías
                                             enableAfterPinSave = true
-                                            postPinSuccessAction = null
+                                            postPinSuccessAction = { showHiddenCategories = true }
                                             showPinSetup = true
                                         } else {
-                                            postPinSuccessAction = {
-                                                coroutineScope.launch {
-                                                    viewModel.setParentalEnabled(true)
-                                                    snackbarHostState.showSnackbar("Control parental activado")
-                                                }
-                                            }
-                                            showPinPromptFor = PinPromptPurpose.ENABLE
+                                            // Con PIN guardado → activar directamente e ir a categorías
+                                            viewModel.setParentalEnabled(true)
+                                            showHiddenCategories = true
+                                            snackbarHostState.showSnackbar("Control parental activado")
                                         }
                                     } else {
+                                        // Desactivar control parental → siempre pedir PIN
                                         if (!hasPin) {
                                             viewModel.setParentalEnabled(false)
                                         } else {
@@ -1113,13 +1113,11 @@ private fun ModernPinPromptDialog(
     var localError by remember { mutableStateOf<String?>(null) }
     
     val title = when (purpose) {
-        PinPromptPurpose.ENABLE -> "Activar control parental"
         PinPromptPurpose.DISABLE -> "Desactivar control parental"
         PinPromptPurpose.OPEN_CATEGORIES -> "Verificación requerida"
     }
     
     val description = when (purpose) {
-        PinPromptPurpose.ENABLE -> "Ingresa tu PIN para activar la protección"
         PinPromptPurpose.DISABLE -> "Ingresa tu PIN para desactivar la protección"
         PinPromptPurpose.OPEN_CATEGORIES -> "Ingresa tu PIN para continuar"
     }
@@ -1391,7 +1389,6 @@ internal fun ModernHiddenCategoriesScreen(
 }
 
 private enum class PinPromptPurpose {
-    ENABLE,
     DISABLE,
     OPEN_CATEGORIES
 }

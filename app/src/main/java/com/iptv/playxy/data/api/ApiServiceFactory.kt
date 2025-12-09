@@ -23,8 +23,9 @@ class ApiServiceFactory @Inject constructor(
      * @return IptvApiService configured for the given URL
      */
     fun createService(baseUrl: String): IptvApiService {
-        // Ensure the base URL ends with /
-        val formattedBaseUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        // Clean and ensure the base URL ends with /
+        val cleanedUrl = baseUrl.trim().replace("\n", "").replace("\r", "")
+        val formattedBaseUrl = if (cleanedUrl.endsWith("/")) cleanedUrl else "$cleanedUrl/"
 
         val retrofit = Retrofit.Builder()
             .baseUrl(formattedBaseUrl)

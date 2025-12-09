@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -75,6 +76,7 @@ import com.iptv.playxy.domain.VodStream
 import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
+import com.iptv.playxy.ui.components.DetailLoadingScreen
 import com.iptv.playxy.ui.player.FullscreenPlayer
 import com.iptv.playxy.ui.player.MovieMiniPlayer
 import com.iptv.playxy.ui.player.PlayerSurface
@@ -90,7 +92,7 @@ fun MovieDetailScreen(
     movie: VodStream,
     onBackClick: () -> Unit,
     onNavigateToMovie: (String, String) -> Unit = { _, _ -> },
-    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast) -> Unit = {},
+    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast, Boolean) -> Unit = { _, _ -> },
     showHomeButton: Boolean = false,
     onNavigateHome: () -> Unit = {},
     viewModel: MoviesViewModel = hiltViewModel()
@@ -143,9 +145,18 @@ fun MovieDetailScreen(
 
     val shouldShowHeaderPlayer = isPlaying && userProfile != null
     val movieInfo = uiState.selectedMovieInfo
-    val headerImageUrl = movieInfo?.backdropPath?.firstOrNull()?.takeIf { it.isNotBlank() }
-        ?: movieInfo?.movieImage
-        ?: movie.streamIcon
+    
+    // Imagen de backdrop - usa la mejor disponible sin cambiar una vez cargada
+    // Mantiene la imagen inicial del catálogo hasta que se cargue una mejor de TMDB/proveedor
+    val initialImageUrl = remember(movie.streamId) { movie.streamIcon }
+    val headerImageUrl = remember(movieInfo, initialImageUrl) {
+        // Prioridad: backdrop TMDB > movieImage proveedor > coverBig > imagen del catálogo
+        movieInfo?.backdropPath?.firstOrNull { it.isNotBlank() }
+            ?: movieInfo?.movieImage?.takeIf { it.isNotBlank() }
+            ?: movieInfo?.coverBig?.takeIf { it.isNotBlank() }
+            ?: initialImageUrl
+    }
+    
     val displayTitle = movieInfo?.name?.takeIf { it.isNotBlank() } ?: movie.name
     val ratingValue = movieInfo?.rating5Based?.toFloat()?.takeIf { it > 0f } ?: movie.rating5Based
 
@@ -305,6 +316,11 @@ fun MovieDetailScreen(
 
     if (!accessGranted) {
         Box(modifier = Modifier.fillMaxSize())
+    } else if (uiState.isLoadingMovieInfo && movieInfo == null) {
+        // Mostrar pantalla de carga mientras se cargan los datos
+        DetailLoadingScreen(
+            onBackClick = onBackClick
+        )
     } else if (isFullscreen && userProfile != null && currentStreamUrl != null) {
         FullscreenPlayer(
             streamUrl = currentStreamUrl,
@@ -611,8 +627,10 @@ fun MovieDetailScreen(
                     val catalogHasTmdb = uiState.catalogHasTmdb  // Si el catálogo del servicio tiene tmdb_id
                     val hasTmdbId = !movieInfo?.tmdbId.isNullOrBlank()
                     
-                    // Reparto con navegación a actores (solo si TMDB habilitado Y el catálogo soporta TMDB)
-                    if (tmdbEnabled && catalogHasTmdb && hasTmdbId && !movieInfo?.tmdbCast.isNullOrEmpty()) {
+                    // Caso 1 y 2: TMDB habilitado Y la película tiene tmdb_id -> mostrar reparto con imágenes
+                    // Caso 1: tmdbEnabled + !catalogHasTmdb + hasTmdbId -> sin buscar disponibilidad
+                    // Caso 2: tmdbEnabled + catalogHasTmdb + hasTmdbId -> con disponibilidad
+                    if (tmdbEnabled && hasTmdbId && !movieInfo?.tmdbCast.isNullOrEmpty()) {
                         Text(
                             text = "Reparto & Equipo",
                             style = MaterialTheme.typography.titleMedium,
@@ -629,7 +647,8 @@ fun MovieDetailScreen(
                                     modifier = Modifier
                                         .width(90.dp)
                                         .clickable {
-                                            onNavigateToActor(cast)
+                                            // Pasar catalogHasTmdb para saber si buscar disponibilidad
+                                            onNavigateToActor(cast, catalogHasTmdb)
                                         }
                                 ) {
                                     Box(
@@ -669,51 +688,22 @@ fun MovieDetailScreen(
                                 }
                             }
                         }
-                    } else if (!movieInfo?.cast.isNullOrEmpty()) {
+                    } else if (!tmdbEnabled && !movieInfo?.cast.isNullOrBlank()) {
+                        // Caso 3: TMDB deshabilitado -> mostrar reparto como texto del proveedor
                         Text(
                             text = "Reparto & Equipo",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.Bold
                         )
-                        val castList = movieInfo?.cast?.split(",")?.map { it.trim() } ?: emptyList()
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp)
-                        ) {
-                            items(castList) { actorName: String ->
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.width(80.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(70.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Person,
-                                            contentDescription = null,
-                                            modifier = Modifier.align(Alignment.Center),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = actorName,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
+                        Text(
+                            text = movieInfo?.cast ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
-                    // Colección relacionada (solo si TMDB habilitado Y el catálogo soporta TMDB)
+                    // Colección relacionada (solo si TMDB habilitado Y el catálogo soporta TMDB Y hay rastreo)
                     val collectionItems = movieInfo?.tmdbCollection ?: emptyList()
                     if (tmdbEnabled && catalogHasTmdb && hasTmdbId && collectionItems.size > 1) {
                         Text(
@@ -836,12 +826,23 @@ private fun CollectionCard(
                         .padding(6.dp)
                         .align(Alignment.TopStart)
                 ) {
-                    Text(
-                        text = "Actual",
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Visibility,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "Actual",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
             }
             if (showUnavailableChip && item.availableStreamId == null) {

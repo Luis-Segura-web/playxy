@@ -10,11 +10,13 @@ data class SeriesInfo(
 )
 
 data class Season(
+    val id: String? = null,  // TMDB Season ID
     val seasonNumber: Int,
     val name: String,
     val episodeCount: Int,
     val cover: String? = null,
-    val airDate: String? = null
+    val airDate: String? = null,
+    val overview: String? = null
 )
 
 data class Episode(

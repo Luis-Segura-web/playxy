@@ -139,6 +139,11 @@ fun PlayxyNavigation(repository: IptvRepository) {
                     navController.navigate(Routes.MAIN) {
                         popUpTo(Routes.LOADING) { inclusive = true }
                     }
+                },
+                onCancel = {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.LOADING) { inclusive = true }
+                    }
                 }
             )
         }
@@ -195,8 +200,8 @@ fun PlayxyNavigation(repository: IptvRepository) {
                     onNavigateToMovie = { toStreamId, toCategoryId ->
                         navController.navigate(Routes.movieDetail(toStreamId, toCategoryId, true))
                     },
-                    onNavigateToActor = { cast ->
-                        navController.navigate(Routes.actorDetail(cast))
+                    onNavigateToActor = { cast, catalogHasTmdb ->
+                        navController.navigate(Routes.actorDetail(cast, catalogHasTmdb))
                     },
                     showHomeButton = fromLink,
                     onNavigateHome = {
@@ -211,16 +216,19 @@ fun PlayxyNavigation(repository: IptvRepository) {
             arguments = listOf(
                 navArgument("actorId") { type = NavType.StringType },
                 navArgument("actorName") { type = NavType.StringType; defaultValue = "" },
-                navArgument("actorProfile") { type = NavType.StringType; defaultValue = "" }
+                navArgument("actorProfile") { type = NavType.StringType; defaultValue = "" },
+                navArgument("catalogHasTmdb") { type = NavType.BoolType; defaultValue = false }
             )
         ) { backStackEntry ->
             val actorId = backStackEntry.arguments?.getString("actorId")?.toIntOrNull() ?: -1
             val actorName = backStackEntry.arguments?.getString("actorName")?.let { android.net.Uri.decode(it) } ?: ""
             val actorProfile = backStackEntry.arguments?.getString("actorProfile")?.let { android.net.Uri.decode(it) } ?: ""
+            val catalogHasTmdb = backStackEntry.arguments?.getBoolean("catalogHasTmdb") ?: false
             ActorDetailScreen(
                 actorId = actorId,
                 fallbackName = actorName,
                 fallbackProfile = actorProfile,
+                catalogHasTmdb = catalogHasTmdb,
                 onBack = {
                     navController.popBackStack()
                 },
@@ -250,8 +258,8 @@ fun PlayxyNavigation(repository: IptvRepository) {
                 onNavigateToSeries = { toSeriesId, toCategoryId ->
                     navController.navigate(Routes.seriesDetail(toSeriesId, toCategoryId))
                 },
-                onNavigateToActor = { cast ->
-                    navController.navigate(Routes.actorDetail(cast))
+                onNavigateToActor = { cast, catalogHasTmdb ->
+                    navController.navigate(Routes.actorDetail(cast, catalogHasTmdb))
                 }
             )
         }

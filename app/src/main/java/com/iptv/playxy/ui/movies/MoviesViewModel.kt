@@ -240,7 +240,11 @@ class MoviesViewModel @Inject constructor(
                         loadCategories()
                         refreshPaging()
                     }
-                    event == "tmdb" -> refreshTmdbEnabled()
+                    event == "tmdb" -> {
+                        refreshTmdbEnabled()
+                        // Reload movie info if a movie is currently selected
+                        currentMovieId?.let { loadMovieInfo(it) }
+                    }
                 }
             }
         }
@@ -289,6 +293,7 @@ class MoviesViewModel @Inject constructor(
             try {
                 currentMovieId = vodId
                 val vodInfo = repository.getVodInfo(vodId)
+                android.util.Log.d("MoviesViewModel", "loadMovieInfo($vodId): vodInfo=${vodInfo != null}, name=${vodInfo?.name}, plot=${vodInfo?.plot?.take(50)}")
                 val progress = movieProgressDao.getProgress(vodId)
                 _uiState.value = _uiState.value.copy(
                     selectedMovieInfo = vodInfo,
@@ -297,6 +302,7 @@ class MoviesViewModel @Inject constructor(
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
+                android.util.Log.e("MoviesViewModel", "loadMovieInfo($vodId) failed: ${e.message}")
                 _uiState.value = _uiState.value.copy(
                     selectedMovieInfo = null,
                     movieProgress = null,
@@ -375,10 +381,10 @@ class MoviesViewModel @Inject constructor(
         }
     }
 
-    fun loadActorDetails(cast: com.iptv.playxy.domain.TmdbCast) {
+    fun loadActorDetails(cast: com.iptv.playxy.domain.TmdbCast, catalogHasTmdb: Boolean = false) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingActor = true)
-            val details = repository.getActorDetails(cast)
+            val details = repository.getActorDetails(cast, catalogHasTmdb)
             _uiState.value = _uiState.value.copy(
                 selectedActor = details,
                 isLoadingActor = false
@@ -386,7 +392,7 @@ class MoviesViewModel @Inject constructor(
         }
     }
 
-    fun loadActorDetails(actorId: Int, name: String?, profile: String?) {
+    fun loadActorDetails(actorId: Int, name: String?, profile: String?, catalogHasTmdb: Boolean = false) {
         if (actorId <= 0) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingActor = true)
@@ -396,7 +402,8 @@ class MoviesViewModel @Inject constructor(
                     name = name ?: "",
                     character = null,
                     profile = profile
-                )
+                ),
+                catalogHasTmdb
             )
             _uiState.value = _uiState.value.copy(
                 selectedActor = details,

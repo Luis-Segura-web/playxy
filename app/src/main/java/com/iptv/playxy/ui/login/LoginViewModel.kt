@@ -30,19 +30,24 @@ class LoginViewModel @Inject constructor(
     val state: StateFlow<LoginState> = _state.asStateFlow()
     
     fun onProfileNameChange(value: String) {
-        _state.value = _state.value.copy(profileName = value, errorMessage = null)
+        val cleaned = value.replace("\n", "").replace("\r", "")
+        _state.value = _state.value.copy(profileName = cleaned, errorMessage = null)
     }
     
     fun onUsernameChange(value: String) {
-        _state.value = _state.value.copy(username = value, errorMessage = null)
+        val cleaned = value.trim().replace("\n", "").replace("\r", "")
+        _state.value = _state.value.copy(username = cleaned, errorMessage = null)
     }
     
     fun onPasswordChange(value: String) {
-        _state.value = _state.value.copy(password = value, errorMessage = null)
+        val cleaned = value.trim().replace("\n", "").replace("\r", "")
+        _state.value = _state.value.copy(password = cleaned, errorMessage = null)
     }
     
     fun onUrlChange(value: String) {
-        _state.value = _state.value.copy(url = value, errorMessage = null)
+        // Clean URL from whitespace and newlines as user types
+        val cleanedUrl = value.trim().replace("\n", "").replace("\r", "")
+        _state.value = _state.value.copy(url = cleanedUrl, errorMessage = null)
     }
     
     fun onSubmit() {

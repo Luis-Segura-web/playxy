@@ -29,14 +29,18 @@ object ResponseMapper {
     private fun Any?.toSafeString(): String = when (this) {
         null -> ""
         is String -> this
-        is Number -> this.toString()
+        is Double -> if (this == this.toLong().toDouble()) this.toLong().toString() else this.toString()
+        is Float -> if (this == this.toLong().toFloat()) this.toLong().toString() else this.toString()
+        is Number -> this.toLong().toString()
         else -> this.toString()
     }
     
     private fun Any?.toSafeStringOrNull(): String? = when (this) {
         null -> null
         is String -> this.ifBlank { null }
-        is Number -> this.toString()
+        is Double -> if (this == this.toLong().toDouble()) this.toLong().toString() else this.toString()
+        is Float -> if (this == this.toLong().toFloat()) this.toLong().toString() else this.toString()
+        is Number -> this.toLong().toString()
         else -> this.toString().ifBlank { null }
     }
     
@@ -144,6 +148,10 @@ object ResponseMapper {
             else -> null
         } ?: emptyList()
 
+        // Get tmdb_id from info response or keep from original series
+        val tmdbId = TmdbIdValidator.sanitizeTmdbId(infoDetails?.tmdbId.toSafeStringOrNull()) 
+            ?: originalSeries.tmdbId
+
         val mergedSeries = originalSeries.copy(
             name = infoDetails?.name ?: originalSeries.name,
             cover = infoDetails?.cover ?: infoDetails?.movieImage ?: originalSeries.cover,
@@ -157,7 +165,8 @@ object ResponseMapper {
             backdropPath = backdrops,
             youtubeTrailer = infoDetails?.youtubeTrailer ?: originalSeries.youtubeTrailer,
             episodeRunTime = infoDetails?.episodeRunTime.toSafeStringOrNull() ?: originalSeries.episodeRunTime,
-            lastModified = infoDetails?.lastModified.toSafeStringOrNull() ?: originalSeries.lastModified
+            lastModified = infoDetails?.lastModified.toSafeStringOrNull() ?: originalSeries.lastModified,
+            tmdbId = tmdbId
         )
 
         return SeriesInfo(
@@ -171,11 +180,13 @@ object ResponseMapper {
 
     fun toSeason(response: SeasonResponse): Season {
         return Season(
+            id = response.id.toSafeStringOrNull(),
             seasonNumber = response.seasonNumber.toSafeInt(),
             name = response.name ?: "Temporada ${response.seasonNumber.toSafeString().ifBlank { "?" }}",
             episodeCount = response.episodeCount.toSafeInt(),
             cover = response.cover ?: response.coverBig,
-            airDate = response.airDate
+            airDate = response.airDate,
+            overview = response.overview
         )
     }
 

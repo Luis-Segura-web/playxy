@@ -65,6 +65,7 @@ import com.iptv.playxy.domain.Series
 import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
+import com.iptv.playxy.ui.components.DetailLoadingScreen
 import com.iptv.playxy.ui.player.FullscreenPlayer
 import com.iptv.playxy.ui.player.PlayerSurface
 import com.iptv.playxy.ui.player.PlayerType
@@ -81,7 +82,7 @@ fun SeriesDetailScreen(
     viewModel: SeriesDetailViewModel = hiltViewModel(),
     onBackClick: () -> Unit,
     onNavigateToSeries: (String, String) -> Unit = { _, _ -> },
-    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast) -> Unit = {}
+    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast, Boolean) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
@@ -109,21 +110,19 @@ fun SeriesDetailScreen(
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var isEpisodeSwitching by remember { mutableStateOf(false) }
     val series = uiState.series
-    val seriesBackdrop = series?.backdropPath?.firstOrNull()?.takeIf { it.isNotBlank() }
     val lastEpisodeCover = uiState.lastEpisode?.info?.cover
     val firstEpisodeCover = uiState.seasons.values.flatten()
         .firstOrNull { !it.info?.cover.isNullOrBlank() }
         ?.info?.cover
-    val headerSources = remember(seriesBackdrop, lastEpisodeCover, firstEpisodeCover, series?.cover) {
-        listOfNotNull(
-            seriesBackdrop,
-            lastEpisodeCover,
-            firstEpisodeCover,
-            series?.cover
-        ).distinct()
+    
+    // Imagen de backdrop - usa la mejor disponible sin cambiar una vez cargada
+    // Prioridad: backdrops de TMDB -> covers de episodios -> poster de la serie
+    val headerImageUrl = remember(series, lastEpisodeCover, firstEpisodeCover) {
+        series?.backdropPath?.firstOrNull { it.isNotBlank() }
+            ?: lastEpisodeCover?.takeIf { it.isNotBlank() }
+            ?: firstEpisodeCover?.takeIf { it.isNotBlank() }
+            ?: series?.cover?.takeIf { it.isNotBlank() }
     }
-    var headerSourceIndex by remember(headerSources) { mutableIntStateOf(0) }
-    val headerImageUrl = headerSources.getOrNull(headerSourceIndex)
     val displayTitle = series?.name.orEmpty()
     val ratingValue = series?.rating5Based ?: 0f
 
@@ -370,6 +369,11 @@ fun SeriesDetailScreen(
 
     if (!accessGranted) {
         Box(modifier = Modifier.fillMaxSize())
+    } else if (uiState.isLoading && uiState.series == null) {
+        // Mostrar pantalla de carga mientras se cargan los datos
+        DetailLoadingScreen(
+            onBackClick = onBackClick
+        )
     } else if (isFullscreen && currentEpisode != null && userProfile != null && currentStreamUrl != null) {
         // Fullscreen player in landscape mode
         FullscreenPlayer(
@@ -490,11 +494,6 @@ fun SeriesDetailScreen(
                             contentDescription = displayTitle.ifBlank { series.name },
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
-                            onError = {
-                                if (headerSourceIndex < headerSources.lastIndex) {
-                                    headerSourceIndex += 1
-                                }
-                            },
                             error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_report_image),
                             placeholder = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
                         )
@@ -900,7 +899,7 @@ private fun InfoTabContent(
     tmdbCast: List<com.iptv.playxy.domain.TmdbCast>,
     tmdbSimilar: List<com.iptv.playxy.domain.TmdbSeriesLink>,
     tmdbCollection: List<com.iptv.playxy.domain.TmdbSeriesLink>,
-    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast) -> Unit,
+    onNavigateToActor: (com.iptv.playxy.domain.TmdbCast, Boolean) -> Unit,
     onNavigateToSeries: (String, String) -> Unit,
     onUnavailable: (com.iptv.playxy.domain.TmdbSeriesLink) -> Unit
 ) {
@@ -990,8 +989,10 @@ private fun InfoTabContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        // Reparto con navegación a actores (solo si TMDB habilitado Y el catálogo soporta TMDB)
-        if (tmdbEnabled && catalogHasTmdb && hasTmdbId && tmdbCast.isNotEmpty()) {
+        // Caso 1 y 2: TMDB habilitado Y la serie tiene tmdb_id -> mostrar reparto con imágenes
+        // Caso 1: tmdbEnabled + !catalogHasTmdb + hasTmdbId -> sin buscar disponibilidad
+        // Caso 2: tmdbEnabled + catalogHasTmdb + hasTmdbId -> con disponibilidad
+        if (tmdbEnabled && hasTmdbId && tmdbCast.isNotEmpty()) {
             Text(
                 text = "Reparto & Equipo",
                 style = MaterialTheme.typography.titleMedium,
@@ -1003,7 +1004,7 @@ private fun InfoTabContent(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .width(90.dp)
-                            .clickable { onNavigateToActor(cast) }
+                            .clickable { onNavigateToActor(cast, catalogHasTmdb) }
                     ) {
                         Box(
                             modifier = Modifier
@@ -1042,8 +1043,8 @@ private fun InfoTabContent(
                     }
                 }
             }
-        } else if (!series.cast.isNullOrBlank()) {
-            // Mostrar reparto del proveedor como texto sin navegación
+        } else if (!tmdbEnabled && !series.cast.isNullOrBlank()) {
+            // Caso 3: TMDB deshabilitado -> mostrar reparto como texto del proveedor
             Text(
                 text = "Reparto & Equipo",
                 style = MaterialTheme.typography.titleMedium,
@@ -1056,7 +1057,7 @@ private fun InfoTabContent(
             )
         }
 
-        // Colección relacionada (solo si TMDB habilitado Y el catálogo soporta TMDB)
+        // Colección relacionada (solo si TMDB habilitado Y el catálogo soporta TMDB Y hay rastreo)
         if (tmdbEnabled && catalogHasTmdb && hasTmdbId && tmdbCollection.size > 1) {
             Text(
                 text = "Colección relacionada",

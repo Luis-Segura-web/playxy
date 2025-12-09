@@ -73,7 +73,10 @@ object TmdbIdValidator {
         return if (isValidTmdbId(tmdbId)) {
             when (tmdbId) {
                 is String -> tmdbId.trim()
-                is Number -> tmdbId.toString()
+                // Handle Double/Float to remove unnecessary decimals (e.g., 12345.0 -> "12345")
+                is Double -> if (tmdbId == tmdbId.toLong().toDouble()) tmdbId.toLong().toString() else tmdbId.toString()
+                is Float -> if (tmdbId == tmdbId.toLong().toFloat()) tmdbId.toLong().toString() else tmdbId.toString()
+                is Number -> tmdbId.toLong().toString()
                 else -> tmdbId.toString()
             }
         } else {

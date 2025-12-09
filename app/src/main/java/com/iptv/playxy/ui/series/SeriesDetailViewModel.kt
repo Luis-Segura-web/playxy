@@ -47,9 +47,30 @@ class SeriesDetailViewModel @Inject constructor(
     private val _userProfile = MutableStateFlow<UserProfile?>(null)
     val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
 
+    // Track current series/category for reload
+    private var currentSeriesId: String? = null
+    private var currentCategoryId: String? = null
+
     init {
         loadUserProfile()
         refreshTmdbEnabled()
+        observePrefEvents()
+    }
+
+    private fun observePrefEvents() {
+        viewModelScope.launch {
+            repository.prefEvents().collect { event ->
+                if (event == "tmdb") {
+                    refreshTmdbEnabled()
+                    // Reload series info when TMDB setting changes
+                    currentSeriesId?.let { seriesId ->
+                        currentCategoryId?.let { categoryId ->
+                            loadSeriesInfo(seriesId, categoryId)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun loadUserProfile() {
@@ -63,18 +84,24 @@ class SeriesDetailViewModel @Inject constructor(
     }
 
     fun loadSeriesInfo(seriesId: String, categoryId: String) {
+        // Store IDs for potential reload when TMDB setting changes
+        currentSeriesId = seriesId
+        currentCategoryId = categoryId
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
             try {
                 // Get series info from repository
                 val seriesInfo = repository.getSeriesInfo(seriesId)
+                android.util.Log.d("SeriesDetailVM", "loadSeriesInfo($seriesId): seriesInfo=${seriesInfo != null}, episodesBySeason=${seriesInfo?.episodesBySeason?.size}, totalEpisodes=${seriesInfo?.episodesBySeason?.values?.flatten()?.size}")
 
                 if (seriesInfo != null) {
                     // Convert episodesBySeason map from String keys to Int keys
                     val seasonMap = seriesInfo.episodesBySeason.mapKeys { (key, _) ->
                         key.toIntOrNull() ?: 0
                     }
+                    android.util.Log.d("SeriesDetailVM", "seasonMap after conversion: ${seasonMap.size} seasons, keys=${seasonMap.keys}")
 
                     // Cargar progreso guardado (último episodio visto)
                     val progress = seriesProgressDao.getProgress(seriesId)
