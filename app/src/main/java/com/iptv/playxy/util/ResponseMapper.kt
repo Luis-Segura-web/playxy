@@ -137,9 +137,28 @@ object ResponseMapper {
     }
 
     fun toSeriesInfo(response: SeriesInfoResponse, originalSeries: Series): SeriesInfo {
-        val seasons = response.seasons?.map { toSeason(it) }?.sortedBy { it.seasonNumber } ?: emptyList()
+        val allSeasons = response.seasons?.map { toSeason(it) }?.sortedBy { it.seasonNumber } ?: emptyList()
         val episodes = response.episodes ?: emptyMap()
         val infoDetails = response.info
+
+        // Map episodes by season, filtering out empty episode lists
+        val episodesBySeason = episodes
+            .filterValues { it.isNotEmpty() }  // Only keep seasons with actual episodes
+            .mapValues { (_, episodeList) ->
+                episodeList.map { toEpisode(it) }.sortedBy { it.episodeNum }
+            }
+
+        // Filter seasons to only include those that have episodes
+        // This ensures compatibility with providers that list seasons without providing episode data
+        val availableSeasonKeys = episodesBySeason.keys.mapNotNull { it.toIntOrNull() }.toSet()
+        val seasons = allSeasons.filter { season ->
+            val hasEpisodes = availableSeasonKeys.contains(season.seasonNumber)
+            if (!hasEpisodes && allSeasons.size > 1) {
+                // Log seasons that are excluded (only if there are multiple seasons)
+                android.util.Log.d("ResponseMapper", "Filtering out season ${season.seasonNumber} '${season.name}' - no episodes available in response")
+            }
+            hasEpisodes
+        }
 
         val backdrops = when {
             infoDetails?.backdropPath != null -> infoDetails.backdropPath.toSafeStringList().takeIf { it.isNotEmpty() }
@@ -169,12 +188,13 @@ object ResponseMapper {
             tmdbId = tmdbId
         )
 
+        // Log summary for debugging
+        android.util.Log.d("ResponseMapper", "toSeriesInfo: ${allSeasons.size} seasons in response, ${seasons.size} with episodes, ${episodesBySeason.values.sumOf { it.size }} total episodes")
+
         return SeriesInfo(
             seasons = seasons,
             info = mergedSeries,
-            episodesBySeason = episodes.mapValues { (_, episodeList) ->
-                episodeList.map { toEpisode(it) }.sortedBy { it.episodeNum }
-            }
+            episodesBySeason = episodesBySeason
         )
     }
 
