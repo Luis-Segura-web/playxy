@@ -42,7 +42,7 @@ class PreferencesManager @Inject constructor(
             "series" -> KEY_BLOCKED_SERIES
             else -> KEY_BLOCKED_GENERIC
         }
-        return prefs.getStringSet(key, emptySet()) ?: emptySet()
+        return (prefs.getStringSet(key, emptySet()) ?: emptySet()).toSet()
     }
 
     fun setBlockedCategories(type: String, ids: Set<String>) {

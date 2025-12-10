@@ -41,24 +41,15 @@ fun HiddenCategoriesScreen(
     onDismiss: () -> Unit,
     onSave: (Set<String>, Set<String>, Set<String>) -> Unit
 ) {
-    fun defaultSelected(categories: List<Category>, initial: Set<String>): Set<String> {
-        if (initial.isNotEmpty() || categories.isEmpty()) return initial
-        val keywordRegex = Regex("(adult|adultos|xxx|porn|porno|sex|sexual|\\+18)", RegexOption.IGNORE_CASE)
-        val auto = categories.filter { keywordRegex.containsMatchIn(it.categoryName.orEmpty()) }
-            .map { it.categoryId }
-            .toSet()
-        return initial + auto
-    }
-
     var selectedTab by remember { mutableStateOf(0) }
-    var selectedLive by remember(initialLive, liveCategories) { 
-        mutableStateOf(defaultSelected(liveCategories, initialLive)) 
+    var selectedLive by remember(initialLive) { 
+        mutableStateOf(initialLive) 
     }
-    var selectedVod by remember(initialVod, vodCategories) { 
-        mutableStateOf(defaultSelected(vodCategories, initialVod)) 
+    var selectedVod by remember(initialVod) { 
+        mutableStateOf(initialVod) 
     }
-    var selectedSeries by remember(initialSeries, seriesCategories) { 
-        mutableStateOf(defaultSelected(seriesCategories, initialSeries)) 
+    var selectedSeries by remember(initialSeries) { 
+        mutableStateOf(initialSeries) 
     }
 
     Dialog(
@@ -224,7 +215,7 @@ private fun ModernCategoriesHeader(
         
         // Descripción
         Text(
-            text = "Selecciona las categorías que deseas ocultar. Las categorías con contenido adulto se marcan automáticamente.",
+            text = "Selecciona las categorías que deseas ocultar de forma manual.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
@@ -294,16 +285,16 @@ private fun ModernTab(
     
     Surface(
         onClick = onClick,
-        modifier = modifier.height(48.dp),
+        modifier = modifier.height(64.dp),
         shape = RoundedCornerShape(12.dp),
         color = backgroundColor
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
             Icon(
                 imageVector = icon,
@@ -311,7 +302,6 @@ private fun ModernTab(
                 tint = contentColor,
                 modifier = Modifier.size(20.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,

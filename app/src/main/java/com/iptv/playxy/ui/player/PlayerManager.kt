@@ -125,6 +125,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private var currentRequest: PlaybackRequest? = null
     private var progressJob: Job? = null
     private var trackLookup: Map<String, TrackOption> = emptyMap()
+    private var userStopped = false
     
     // Auto-retry configuration
     private var retryCount = 0
@@ -146,6 +147,9 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                     // Reset retry count on successful playback
                     retryCount = 0
                     updateProgress()
+                    userStopped = false
+                } else if ((playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) && currentRequest != null && !userStopped) {
+                    handleAutoRestart("Playback stopped (state=$playbackState)")
                 }
             }
 
@@ -206,6 +210,31 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
+    private fun handleAutoRestart(reason: String) {
+        if (retryCount < maxRetries && currentRequest != null) {
+            retryCount++
+            _uiState.update {
+                it.copy(
+                    isBuffering = true,
+                    hasError = false,
+                    errorMessage = "Reintentando... ($retryCount/$maxRetries)"
+                )
+            }
+            Log.w(TAG, "Auto-restart triggered ($reason). Retry $retryCount/$maxRetries")
+            scheduleRetry()
+        } else {
+            _uiState.update {
+                it.copy(
+                    hasError = true,
+                    errorMessage = "Reproduccion detenida",
+                    isPlaying = false,
+                    isBuffering = false
+                )
+            }
+            updateForegroundPlayback(false)
+        }
+    }
+
     private fun startProgressUpdates() {
         progressJob?.cancel()
         progressJob = scope.launch {
@@ -234,6 +263,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         
         // Cancel any pending retry when starting new playback
         retryJob?.cancel()
+        userStopped = false
         
         val lastRequest = currentRequest
         if (!forcePrepare && lastRequest?.url == url && lastRequest.type == type) {
@@ -288,6 +318,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     }
 
     fun play() {
+        userStopped = false
         if (player.playbackState == Player.STATE_IDLE && currentRequest != null) {
             player.prepare()
         }
@@ -295,6 +326,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     }
 
     fun pause() {
+        userStopped = true
         player.playWhenReady = false
     }
 
@@ -302,6 +334,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         // Cancel any pending retry
         retryJob?.cancel()
         retryCount = 0
+        userStopped = true
         
         player.stop()
         player.clearMediaItems()
@@ -376,8 +409,8 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     private fun updateForegroundPlayback(isPlaying: Boolean) {
         if (isPlaying && !foregroundServiceActive) {
-            PlaybackForegroundService.start(appContext)
-            foregroundServiceActive = true
+            val started = PlaybackForegroundService.start(appContext)
+            foregroundServiceActive = started
         } else if (!isPlaying && foregroundServiceActive) {
             PlaybackForegroundService.stop(appContext)
             foregroundServiceActive = false

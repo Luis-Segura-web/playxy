@@ -62,9 +62,9 @@ class MainViewModel @Inject constructor(
         val blockedVod = if (parentalEnabled) repository.getBlockedCategories("vod") else emptySet()
         val blockedSeries = if (parentalEnabled) repository.getBlockedCategories("series") else emptySet()
         val liveStreams = repository.getLiveStreams()
-            .filterNot { parentalEnabled && (blockedLive.contains(it.categoryId) || it.isAdult) }
+            .filterNot { parentalEnabled && blockedLive.contains(it.categoryId) }
         val vodStreams = repository.getVodStreams()
-            .filterNot { parentalEnabled && (blockedVod.contains(it.categoryId) || it.isAdult) }
+            .filterNot { parentalEnabled && blockedVod.contains(it.categoryId) }
         val series = repository.getSeries()
             .filterNot { parentalEnabled && blockedSeries.contains(it.categoryId) }
         val lastLiveUpdate = repository.getLastLiveUpdateTime()

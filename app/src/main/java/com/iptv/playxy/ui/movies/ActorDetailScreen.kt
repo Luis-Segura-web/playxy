@@ -2,6 +2,7 @@ package com.iptv.playxy.ui.movies
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +77,8 @@ fun ActorDetailScreen(
     LaunchedEffect(actorId, catalogHasTmdb) {
         viewModel.loadActorDetails(actorId, fallbackName, fallbackProfile.takeIf { it.isNotBlank() }, catalogHasTmdb)
     }
+
+    var bioExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -173,14 +176,29 @@ fun ActorDetailScreen(
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(
-                                        text = actor.biography ?: "",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(16.dp),
-                                        maxLines = 12,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = actor.biography ?: "",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = if (bioExpanded) Int.MAX_VALUE else 6,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (bioExpanded) "Mostrar menos" else "Mostrar más",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { bioExpanded = !bioExpanded }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -240,8 +258,8 @@ fun ActorDetailScreen(
                                         FilmographyCard(
                                             item = movie,
                                             showAvailability = catalogHasTmdb,  // Solo mostrar chip cuando hay rastreo
-                                            enabled = true,
-                                            onClick = { selectedUnavailableMovie = movie }
+                                            enabled = false,
+                                            onClick = { }
                                         )
                                     }
                                 }
@@ -311,6 +329,7 @@ private fun FilmographyCard(
     showAvailability: Boolean,
     enabled: Boolean
 ) {
+    var overviewExpanded by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -318,99 +337,132 @@ private fun FilmographyCard(
         shape = RoundedCornerShape(12.dp),
         tonalElevation = 3.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 90.dp, height = 135.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                AsyncImage(
-                    model = item.poster ?: item.backdrop,
-                    contentDescription = item.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (!item.character.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .width(110.dp)
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    AsyncImage(
+                        model = item.poster ?: item.backdrop,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
-                        text = item.character,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = item.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
-                val year = item.releaseDate?.takeIf { it.length >= 4 }?.take(4)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (year != null) {
+                    val genreText = remember(item.genreIds) { formatGenres(item.genreIds, isTv = false) }
+                    genreText?.let {
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(50)
                         ) {
                             Text(
-                                text = year,
+                                text = it,
                                 style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
+                    item.releaseDate?.takeIf { it.isNotBlank() }?.let { date ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(50)
+                        ) {
+                            Text(
+                                text = date.take(10),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                    val rating5 = (item.rating ?: 0.0) / 2.0
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        repeat(5) { index ->
+                            val filled = rating5 >= index + 1
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = if (filled) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = String.format("%.1f/5", rating5),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (!item.character.isNullOrBlank()) {
+                        Text(
+                            text = "Personaje: ${item.character}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     if (showAvailability && item.availableStreamId == null) {
                         Surface(
-                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(6.dp)
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(50)
                         ) {
                             Text(
                                 text = "No disponible",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
                     }
                 }
-                if (item.rating != null) {
-                    val rating5 = item.rating / 2
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
-                        Text(
-                            text = String.format("%.1f", rating5),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                if (!item.overview.isNullOrBlank()) {
+            }
+            if (!item.overview.isNullOrBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         text = item.overview,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
+                        maxLines = if (overviewExpanded) Int.MAX_VALUE else 4,
                         overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (overviewExpanded) "Mostrar menos" else "Mostrar más",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { overviewExpanded = !overviewExpanded }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
         }
     }
 }
-
 @Composable
 private fun ActorUnavailableDialog(
     item: TmdbMovieLink,
@@ -509,6 +561,7 @@ private fun SeriesFilmographyCard(
     showAvailability: Boolean,
     enabled: Boolean
 ) {
+    var overviewExpanded by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -516,99 +569,132 @@ private fun SeriesFilmographyCard(
         shape = RoundedCornerShape(12.dp),
         tonalElevation = 3.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 90.dp, height = 135.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                AsyncImage(
-                    model = item.poster ?: item.backdrop,
-                    contentDescription = item.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (!item.character.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .width(110.dp)
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    AsyncImage(
+                        model = item.poster ?: item.backdrop,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
-                        text = item.character,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = item.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
-                val year = item.firstAirDate?.takeIf { it.length >= 4 }?.take(4)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (year != null) {
+                    val genreText = remember(item.genreIds) { formatGenres(item.genreIds, isTv = true) }
+                    genreText?.let {
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(50)
                         ) {
                             Text(
-                                text = year,
+                                text = it,
                                 style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
+                    item.firstAirDate?.takeIf { it.isNotBlank() }?.let { date ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(50)
+                        ) {
+                            Text(
+                                text = date.take(10),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                    val rating5 = (item.rating ?: 0.0) / 2.0
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        repeat(5) { index ->
+                            val filled = rating5 >= index + 1
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = if (filled) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = String.format("%.1f/5", rating5),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (!item.character.isNullOrBlank()) {
+                        Text(
+                            text = "Personaje: ${item.character}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     if (showAvailability && item.availableSeriesId == null) {
                         Surface(
-                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(6.dp)
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(50)
                         ) {
                             Text(
                                 text = "No disponible",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
                     }
                 }
-                if (item.rating != null) {
-                    val rating5 = item.rating / 2
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
-                        Text(
-                            text = String.format("%.1f", rating5),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                if (!item.overview.isNullOrBlank()) {
+            }
+            if (!item.overview.isNullOrBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         text = item.overview,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
+                        maxLines = if (overviewExpanded) Int.MAX_VALUE else 4,
                         overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (overviewExpanded) "Mostrar menos" else "Mostrar más",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { overviewExpanded = !overviewExpanded }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
         }
     }
 }
-
 @Composable
 private fun ActorUnavailableSeriesDialog(
     item: TmdbSeriesLink,
@@ -690,3 +776,51 @@ private fun ActorUnavailableSeriesDialog(
         }
     }
 }
+
+private val tmdbMovieGenreMap = mapOf(
+    28 to "Accion",
+    12 to "Aventura",
+    16 to "Animacion",
+    35 to "Comedia",
+    80 to "Crimen",
+    99 to "Documental",
+    18 to "Drama",
+    10751 to "Familia",
+    14 to "Fantasia",
+    36 to "Historia",
+    27 to "Terror",
+    10402 to "Musica",
+    9648 to "Misterio",
+    10749 to "Romance",
+    878 to "Ciencia ficcion",
+    10770 to "Pelicula de TV",
+    53 to "Suspenso",
+    10752 to "Guerra",
+    37 to "Western"
+)
+
+private val tmdbTvGenreMap = mapOf(
+    10759 to "Accion y aventura",
+    16 to "Animacion",
+    35 to "Comedia",
+    80 to "Crimen",
+    99 to "Documental",
+    18 to "Drama",
+    10751 to "Familia",
+    10762 to "Infantil",
+    9648 to "Misterio",
+    10763 to "Noticias",
+    10764 to "Reality",
+    10765 to "Ciencia ficcion y fantasia",
+    10766 to "Telenovela",
+    10767 to "Charlas",
+    10768 to "Guerra y politica",
+    37 to "Western"
+)
+
+private fun formatGenres(genreIds: List<Int>, isTv: Boolean): String? {
+    val lookup = if (isTv) tmdbTvGenreMap + tmdbMovieGenreMap else tmdbMovieGenreMap + tmdbTvGenreMap
+    val names = genreIds.mapNotNull { lookup[it] }.distinct()
+    return names.takeIf { it.isNotEmpty() }?.joinToString(" / ")
+}
+

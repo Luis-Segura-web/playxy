@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -68,10 +69,16 @@ class PlaybackForegroundService : Service() {
     companion object {
         private const val CHANNEL_ID = "playback_foreground_channel"
         private const val NOTIFICATION_ID = 101
+        private const val TAG = "PlaybackForegroundService"
 
-        fun start(context: Context) {
+        fun start(context: Context): Boolean {
             val intent = Intent(context, PlaybackForegroundService::class.java)
-            ContextCompat.startForegroundService(context, intent)
+            return runCatching {
+                ContextCompat.startForegroundService(context, intent)
+                true
+            }.onFailure {
+                Log.w(TAG, "No se pudo iniciar foreground service", it)
+            }.getOrDefault(false)
         }
 
         fun stop(context: Context) {

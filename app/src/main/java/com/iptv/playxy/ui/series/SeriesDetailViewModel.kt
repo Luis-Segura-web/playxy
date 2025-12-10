@@ -30,6 +30,7 @@ data class SeriesDetailUiState(
     val tmdbCast: List<TmdbCast> = emptyList(),
     val tmdbSimilar: List<TmdbSeriesLink> = emptyList(),
     val tmdbCollection: List<TmdbSeriesLink> = emptyList(),
+    val tmdbRecommended: List<TmdbSeriesLink> = emptyList(),
     val tmdbEnabled: Boolean = false,
     val catalogHasTmdb: Boolean = false  // Indica si el catálogo del servicio tiene tmdb_id
 )
@@ -123,6 +124,7 @@ class SeriesDetailViewModel @Inject constructor(
                         tmdbCast = seriesInfo.tmdbCast,
                         tmdbSimilar = seriesInfo.tmdbSimilar,
                         tmdbCollection = seriesInfo.tmdbCollection,
+                        tmdbRecommended = seriesInfo.tmdbRecommended,
                         isLoading = false
                     )
                 } else {

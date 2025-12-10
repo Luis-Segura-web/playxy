@@ -188,7 +188,7 @@ class TVViewModel @Inject constructor(
                 "favorites" -> {
                     val favorites = withContext(Dispatchers.Default) {
                         repository.getLiveStreams()
-                            .filterNot { parentalEnabled && (it.isAdult || blockedCategories.contains(it.categoryId)) }
+                            .filterNot { parentalEnabled && blockedCategories.contains(it.categoryId) }
                             .filter { _uiState.value.favoriteChannelIds.contains(it.streamId) }
                             .distinctBy { it.streamId }
                     }
@@ -198,7 +198,7 @@ class TVViewModel @Inject constructor(
                     val recentsIds = _uiState.value.recents
                     val all = withContext(Dispatchers.Default) {
                         repository.getLiveStreams()
-                            .filterNot { parentalEnabled && (it.isAdult || blockedCategories.contains(it.categoryId)) }
+                            .filterNot { parentalEnabled && blockedCategories.contains(it.categoryId) }
                             .associateBy { it.streamId }
                     }
                     val recents = recentsIds.mapNotNull { all[it] }.distinctBy { it.streamId }
@@ -209,7 +209,7 @@ class TVViewModel @Inject constructor(
                     repository.getPagedLiveStreams(
                         categoryId = categoryId,
                         searchQuery = search,
-                        blockAdult = parentalEnabled,
+                        blockAdult = false,
                         blockedCategories = allowBlockedList,
                         sortOrder = sortCode,
                         pageSize = 60

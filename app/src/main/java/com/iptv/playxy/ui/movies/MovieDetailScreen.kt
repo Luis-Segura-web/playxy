@@ -703,9 +703,11 @@ fun MovieDetailScreen(
                         )
                     }
 
-                    // Colección relacionada (solo si TMDB habilitado Y el catálogo soporta TMDB Y hay rastreo)
-                    val collectionItems = movieInfo?.tmdbCollection ?: emptyList()
-                    if (tmdbEnabled && catalogHasTmdb && hasTmdbId && collectionItems.size > 1) {
+                    // Colección relacionada (solo contenido disponible en el servicio)
+                    val collectionItems = (movieInfo?.tmdbCollection ?: emptyList())
+                        .filter { it.availableStreamId != null && it.availableCategoryId != null }
+                    val hasOtherCollection = collectionItems.any { it.availableStreamId != movie.streamId }
+                    if (tmdbEnabled && hasTmdbId && collectionItems.isNotEmpty() && hasOtherCollection) {
                         Text(
                             text = "Colección relacionada",
                             style = MaterialTheme.typography.titleMedium,
@@ -730,8 +732,10 @@ fun MovieDetailScreen(
                         }
                     }
 
-                    // Películas similares (solo si TMDB habilitado Y el catálogo soporta TMDB)
-                    if (tmdbEnabled && catalogHasTmdb && hasTmdbId && !movieInfo?.tmdbSimilar.isNullOrEmpty()) {
+                    // Películas similares (solo disponibles en el servicio)
+                    val similarItems = (movieInfo?.tmdbSimilar ?: emptyList())
+                        .filter { it.availableStreamId != null && it.availableCategoryId != null }
+                    if (tmdbEnabled && hasTmdbId && similarItems.isNotEmpty()) {
                         Text(
                             text = "Películas similares",
                             style = MaterialTheme.typography.titleMedium,
@@ -739,7 +743,32 @@ fun MovieDetailScreen(
                             fontWeight = FontWeight.Bold
                         )
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(movieInfo?.tmdbSimilar ?: emptyList()) { item ->
+                            items(similarItems) { item ->
+                                CollectionCard(
+                                    item = item,
+                                    showUnavailableChip = false,
+                                    onClick = { link ->
+                                        if (link.availableStreamId != null && link.availableCategoryId != null) {
+                                            onNavigateToMovie(link.availableStreamId, link.availableCategoryId)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Películas recomendadas (solo disponibles en el servicio)
+                    val recommendedItems = (movieInfo?.tmdbRecommended ?: emptyList())
+                        .filter { it.availableStreamId != null && it.availableCategoryId != null }
+                    if (tmdbEnabled && hasTmdbId && recommendedItems.isNotEmpty()) {
+                        Text(
+                            text = "Recomendadas",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(recommendedItems) { item ->
                                 CollectionCard(
                                     item = item,
                                     showUnavailableChip = false,
@@ -877,6 +906,7 @@ private fun UnavailableMovieDialog(
     item: com.iptv.playxy.domain.TmdbMovieLink,
     onDismiss: () -> Unit
 ) {
+    var overviewExpanded by remember { mutableStateOf(false) }
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(12.dp),

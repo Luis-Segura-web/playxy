@@ -27,7 +27,8 @@ data class VodInfo(
     val bitrate: Int?,
     val tmdbCast: List<TmdbCast> = emptyList(),
     val tmdbCollection: List<TmdbMovieLink> = emptyList(),
-    val tmdbSimilar: List<TmdbMovieLink> = emptyList()
+    val tmdbSimilar: List<TmdbMovieLink> = emptyList(),
+    val tmdbRecommended: List<TmdbMovieLink> = emptyList()
 )
 
 data class TmdbCast(
@@ -48,7 +49,8 @@ data class TmdbMovieLink(
     val releaseDate: String? = null,
     val overview: String? = null,
     val backdrop: String? = null,
-    val rating: Double? = null
+    val rating: Double? = null,
+    val genreIds: List<Int> = emptyList()
 )
 
 data class ActorDetails(

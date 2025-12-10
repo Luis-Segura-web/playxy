@@ -585,6 +585,7 @@ fun SeriesDetailScreen(
                                 tmdbCast = uiState.tmdbCast,
                                 tmdbSimilar = uiState.tmdbSimilar,
                                 tmdbCollection = uiState.tmdbCollection,
+                                tmdbRecommended = uiState.tmdbRecommended,
                                 onNavigateToActor = onNavigateToActor,
                                 onNavigateToSeries = onNavigateToSeries,
                                 onUnavailable = { unavailableSeriesInfo = it }
@@ -899,6 +900,7 @@ private fun InfoTabContent(
     tmdbCast: List<com.iptv.playxy.domain.TmdbCast>,
     tmdbSimilar: List<com.iptv.playxy.domain.TmdbSeriesLink>,
     tmdbCollection: List<com.iptv.playxy.domain.TmdbSeriesLink>,
+    tmdbRecommended: List<com.iptv.playxy.domain.TmdbSeriesLink>,
     onNavigateToActor: (com.iptv.playxy.domain.TmdbCast, Boolean) -> Unit,
     onNavigateToSeries: (String, String) -> Unit,
     onUnavailable: (com.iptv.playxy.domain.TmdbSeriesLink) -> Unit
@@ -1057,15 +1059,16 @@ private fun InfoTabContent(
             )
         }
 
-        // Colección relacionada (solo si TMDB habilitado Y el catálogo soporta TMDB Y hay rastreo)
-        if (tmdbEnabled && catalogHasTmdb && hasTmdbId && tmdbCollection.size > 1) {
+        // Colección relacionada (solo contenido disponible en el servicio)
+        val availableCollection = tmdbCollection.filter { it.availableSeriesId != null && it.availableCategoryId != null }
+        if (tmdbEnabled && hasTmdbId && availableCollection.isNotEmpty()) {
             Text(
                 text = "Colección relacionada",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(tmdbCollection) { item ->
+            items(availableCollection) { item ->
                     SeriesSimilarCard(
                         item = item,
                         onClick = {
@@ -1080,15 +1083,40 @@ private fun InfoTabContent(
             }
         }
 
-        // Series similares (solo si TMDB habilitado Y el catálogo soporta TMDB)
-        if (tmdbEnabled && catalogHasTmdb && hasTmdbId && tmdbSimilar.isNotEmpty()) {
+        // Series similares (solo disponibles en el servicio)
+        val availableSimilar = tmdbSimilar.filter { it.availableSeriesId != null && it.availableCategoryId != null }
+        if (tmdbEnabled && hasTmdbId && availableSimilar.isNotEmpty()) {
             Text(
                 text = "Series similares",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(tmdbSimilar) { item ->
+                items(availableSimilar) { item ->
+                    SeriesSimilarCard(
+                        item = item,
+                        onClick = {
+                            if (item.availableSeriesId != null && item.availableCategoryId != null) {
+                                onNavigateToSeries(item.availableSeriesId, item.availableCategoryId)
+                            } else {
+                                onUnavailable(item)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        // Series recomendadas (solo disponibles en el servicio)
+        val availableRecommended = tmdbRecommended.filter { it.availableSeriesId != null && it.availableCategoryId != null }
+        if (tmdbEnabled && hasTmdbId && availableRecommended.isNotEmpty()) {
+            Text(
+                text = "Recomendadas",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(availableRecommended) { item ->
                     SeriesSimilarCard(
                         item = item,
                         onClick = {

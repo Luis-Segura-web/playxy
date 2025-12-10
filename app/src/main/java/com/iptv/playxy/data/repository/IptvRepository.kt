@@ -855,6 +855,7 @@ class IptvRepository @Inject constructor(
                         val overview = result.overview
                         val backdrop = tmdbBackdropUrl(result.backdropPath)
                         val rating = result.voteAverage
+                        val genreIds = result.genreIds.orEmpty()
                         if (matches.isEmpty()) {
                             if (includeUnavailable) {
                                 list += com.iptv.playxy.domain.TmdbMovieLink(
@@ -868,7 +869,8 @@ class IptvRepository @Inject constructor(
                                     releaseDate = releaseDate,
                                     overview = overview,
                                     backdrop = backdrop,
-                                    rating = rating
+                                    rating = rating,
+                                    genreIds = genreIds
                                 )
                             }
                         } else {
@@ -884,7 +886,8 @@ class IptvRepository @Inject constructor(
                                     releaseDate = releaseDate,
                                     overview = overview,
                                     backdrop = backdrop,
-                                    rating = rating
+                                    rating = rating,
+                                    genreIds = genreIds
                                 )
                             }
                         }
@@ -905,6 +908,7 @@ class IptvRepository @Inject constructor(
                         val overview = result.overview
                         val backdrop = tmdbBackdropUrl(result.backdropPath)
                         val rating = result.voteAverage
+                        val genreIds = result.genreIds.orEmpty()
                         if (matches.isEmpty()) {
                             if (includeUnavailable) {
                                 list += com.iptv.playxy.domain.TmdbSeriesLink(
@@ -918,7 +922,8 @@ class IptvRepository @Inject constructor(
                                     firstAirDate = airDate,
                                     overview = overview,
                                     backdrop = backdrop,
-                                    rating = rating
+                                    rating = rating,
+                                    genreIds = genreIds
                                 )
                             }
                         } else {
@@ -934,7 +939,8 @@ class IptvRepository @Inject constructor(
                                     firstAirDate = airDate,
                                     overview = overview,
                                     backdrop = backdrop,
-                                    rating = rating
+                                    rating = rating,
+                                    genreIds = genreIds
                                 )
                             }
                         }
@@ -1023,6 +1029,8 @@ class IptvRepository @Inject constructor(
             ?.mapNotNull { it.name }
             ?.takeIf { it.isNotEmpty() }
             ?.joinToString(" / ")
+        val tmdbSeriesGenreIds = tmdb.genres?.mapNotNull { it.id } ?: emptyList()
+        val tmdbGenreIds = tmdb.genres?.mapNotNull { it.id } ?: emptyList()
 
         val rating5Based = provider.rating5Based ?: tmdb.voteAverage?.div(2.0)
         val rating = provider.rating ?: tmdb.voteAverage?.toString()
@@ -1060,6 +1068,7 @@ class IptvRepository @Inject constructor(
                 val overview = result.overview
                 val backdrop = tmdbBackdropUrl(result.backdropPath)
                 val rating = result.voteAverage
+                val genreIds = result.genreIds.orEmpty().ifEmpty { tmdbGenreIds }
                 if (matches.isEmpty()) {
                     if (includeUnavailable) {
                         links += com.iptv.playxy.domain.TmdbMovieLink(
@@ -1073,7 +1082,8 @@ class IptvRepository @Inject constructor(
                             releaseDate = releaseDate,
                             overview = overview,
                             backdrop = backdrop,
-                            rating = rating
+                            rating = rating,
+                            genreIds = genreIds
                         )
                     }
                 } else {
@@ -1089,7 +1099,8 @@ class IptvRepository @Inject constructor(
                             releaseDate = releaseDate,
                             overview = overview,
                             backdrop = backdrop,
-                            rating = rating
+                            rating = rating,
+                            genreIds = genreIds
                         )
                     }
                 }
@@ -1098,8 +1109,8 @@ class IptvRepository @Inject constructor(
         }
 
         val collectionLinks = if (collection != null) mapMovieLinks(collection.parts, includeUnavailable = true) else emptyList()
-        val similarLinks = mapMovieLinks(tmdb.similar?.results, includeUnavailable = false) +
-            mapMovieLinks(tmdb.recommendations?.results, includeUnavailable = false)
+        val similarLinks = mapMovieLinks(tmdb.similar?.results, includeUnavailable = false)
+        val recommendedLinks = mapMovieLinks(tmdb.recommendations?.results, includeUnavailable = false)
 
         // Variantes locales con mismo TMDB que la película actual
         val localVariants = streamsByTmdb[provider.tmdbId]?.map { stream ->
@@ -1113,7 +1124,8 @@ class IptvRepository @Inject constructor(
                 character = null,
                 releaseDate = tmdb.releaseDate ?: provider.releaseDate,
                 overview = tmdb.overview ?: provider.plot,
-                backdrop = tmdbBackdropUrl(tmdb.backdropPath)
+                backdrop = tmdbBackdropUrl(tmdb.backdropPath),
+                genreIds = tmdbGenreIds
             )
         }.orEmpty()
 
@@ -1144,7 +1156,8 @@ class IptvRepository @Inject constructor(
                 .distinctBy { it.availableStreamId ?: "tmdb-${it.tmdbId}" }
                 .sortedWith(compareBy<com.iptv.playxy.domain.TmdbMovieLink> { releaseDateKey(it.releaseDate) }
                     .thenBy { it.tmdbTitle ?: it.title }),
-            tmdbSimilar = similarLinks.filter { it.availableStreamId != null }
+            tmdbSimilar = similarLinks.filter { it.availableStreamId != null },
+            tmdbRecommended = recommendedLinks.filter { it.availableStreamId != null }
         )
     }
 
@@ -1173,6 +1186,7 @@ class IptvRepository @Inject constructor(
             ?.mapNotNull { it.name }
             ?.takeIf { it.isNotEmpty() }
             ?.joinToString(" / ")
+        val tmdbSeriesGenreIds = tmdb.genres?.mapNotNull { it.id } ?: emptyList()
 
         val rating5Based = provider.rating5Based.takeIf { it > 0 } ?: tmdb.voteAverage?.div(2.0)?.toFloat()
         val rating = provider.rating.takeIf { it > 0f } ?: tmdb.voteAverage?.toFloat()
@@ -1210,6 +1224,7 @@ class IptvRepository @Inject constructor(
                 val overview = result.overview
                 val backdrop = tmdbBackdropUrl(result.backdropPath)
                 val rating = result.voteAverage
+                val genreIds = result.genreIds.orEmpty().ifEmpty { tmdbSeriesGenreIds }
                 if (matches.isEmpty()) {
                     if (includeUnavailable) {
                         links += com.iptv.playxy.domain.TmdbSeriesLink(
@@ -1223,7 +1238,8 @@ class IptvRepository @Inject constructor(
                             firstAirDate = airDate,
                             overview = overview,
                             backdrop = backdrop,
-                            rating = rating
+                            rating = rating,
+                            genreIds = genreIds
                         )
                     }
                 } else {
@@ -1239,7 +1255,8 @@ class IptvRepository @Inject constructor(
                             firstAirDate = airDate,
                             overview = overview,
                             backdrop = backdrop,
-                            rating = rating
+                            rating = rating,
+                            genreIds = genreIds
                         )
                     }
                 }
@@ -1247,8 +1264,8 @@ class IptvRepository @Inject constructor(
             return links.distinctBy { it.availableSeriesId ?: "tmdb-${it.tmdbId}" }
         }
 
-        val similarLinks = mapSeriesLinks(tmdb.similar?.results, includeUnavailable = false) +
-            mapSeriesLinks(tmdb.recommendations?.results, includeUnavailable = false)
+        val similarLinks = mapSeriesLinks(tmdb.similar?.results, includeUnavailable = false)
+        val recommendedLinks = mapSeriesLinks(tmdb.recommendations?.results, includeUnavailable = false)
 
         val collectionLinks = provider.tmdbId?.let { id ->
             seriesByTmdb[id]?.map { series ->
@@ -1262,7 +1279,8 @@ class IptvRepository @Inject constructor(
                     firstAirDate = series.releaseDate ?: tmdb.firstAirDate,
                     overview = series.plot ?: tmdb.overview,
                     backdrop = series.backdropPath.firstOrNull() ?: tmdbBackdropUrl(tmdb.backdropPath),
-                    rating = tmdb.voteAverage
+                    rating = tmdb.voteAverage,
+                    genreIds = tmdbSeriesGenreIds
                 )
             }
         }.orEmpty()
@@ -1288,6 +1306,7 @@ class IptvRepository @Inject constructor(
             info = mergedSeries,
             tmdbCast = castList,
             tmdbSimilar = similarLinks.filter { it.availableSeriesId != null },
+            tmdbRecommended = recommendedLinks.filter { it.availableSeriesId != null },
             tmdbCollection = collectionLinks.distinctBy { it.availableSeriesId ?: "tmdb-${it.tmdbId}" }
         )
     }

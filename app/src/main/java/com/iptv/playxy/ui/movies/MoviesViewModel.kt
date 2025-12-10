@@ -133,7 +133,7 @@ class MoviesViewModel @Inject constructor(
             "favorites" -> {
                 val favorites = withContext(Dispatchers.Default) {
                     repository.getVodStreams()
-                        .filterNot { parentalEnabled && (it.isAdult || blockedCategories.contains(it.categoryId)) }
+                        .filterNot { parentalEnabled && blockedCategories.contains(it.categoryId) }
                         .filter { favoriteIds.contains(it.streamId) }
                         .distinctBy { it.streamId }
                 }
@@ -145,7 +145,7 @@ class MoviesViewModel @Inject constructor(
                 recents.forEach { recentIds.addLast(it.streamId) }
                 val recentsMovies = withContext(Dispatchers.Default) {
                     val filtered = repository.getVodStreams()
-                        .filterNot { parentalEnabled && (it.isAdult || blockedCategories.contains(it.categoryId)) }
+                        .filterNot { parentalEnabled && blockedCategories.contains(it.categoryId) }
                         .associateBy { it.streamId }
                     recents.mapNotNull { filtered[it.streamId] }.distinctBy { it.streamId }
                 }
@@ -157,7 +157,7 @@ class MoviesViewModel @Inject constructor(
                     repository.getPagedVodStreams(
                         categoryId = categoryId,
                         searchQuery = search.ifBlank { null },
-                        blockAdult = parentalEnabled,
+                        blockAdult = false,
                         blockedCategories = blockedCategories.toList(),
                         sortOrder = sortCode
                     ).cachedIn(viewModelScope)

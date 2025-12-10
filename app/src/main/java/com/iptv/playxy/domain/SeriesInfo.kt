@@ -6,7 +6,8 @@ data class SeriesInfo(
     val episodesBySeason: Map<String, List<Episode>> = emptyMap(),
     val tmdbCast: List<TmdbCast> = emptyList(),
     val tmdbSimilar: List<TmdbSeriesLink> = emptyList(),
-    val tmdbCollection: List<TmdbSeriesLink> = emptyList()
+    val tmdbCollection: List<TmdbSeriesLink> = emptyList(),
+    val tmdbRecommended: List<TmdbSeriesLink> = emptyList()
 )
 
 data class Season(
@@ -42,7 +43,8 @@ data class TmdbSeriesLink(
     val firstAirDate: String? = null,
     val overview: String? = null,
     val backdrop: String? = null,
-    val rating: Double? = null
+    val rating: Double? = null,
+    val genreIds: List<Int> = emptyList()
 )
 
 data class EpisodeInfo(
