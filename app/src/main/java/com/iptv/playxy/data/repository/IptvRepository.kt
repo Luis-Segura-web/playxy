@@ -83,7 +83,7 @@ class IptvRepository @Inject constructor(
     fun getProfileFlow(): Flow<UserProfile?> {
         return userProfileDao.getProfileFlow().map { it?.let { EntityMapper.toDomain(it) } }
     }
-    
+
     suspend fun saveProfile(profile: UserProfile) {
         userProfileDao.insertProfile(EntityMapper.toEntity(profile))
     }
@@ -107,7 +107,7 @@ class IptvRepository @Inject constructor(
     suspend fun deleteProfile() {
         userProfileDao.deleteAllProfiles()
     }
-    
+
     suspend fun validateCredentials(username: String, password: String, baseUrl: String): Boolean {
         return try {
             // Create API service with the provided base URL
@@ -464,10 +464,10 @@ class IptvRepository @Inject constructor(
         prefs.setBlockedCategories(type, ids)
         prefEvents.tryEmit("blocked_$type")
     }
-    
+
     private suspend fun loadCategories(apiService: com.iptv.playxy.data.api.IptvApiService, username: String, password: String) {
         categoryDao.deleteAll()
-        
+
         // Load live categories
         val liveResponse = apiService.getLiveCategories(username, password)
         if (liveResponse.isSuccessful) {
@@ -476,7 +476,7 @@ class IptvRepository @Inject constructor(
             } ?: emptyList()
             categoryDao.insertAll(categories.map { EntityMapper.toEntity(it, "live") })
         }
-        
+
         // Load VOD categories
         val vodResponse = apiService.getVodCategories(username, password)
         if (vodResponse.isSuccessful) {
@@ -485,7 +485,7 @@ class IptvRepository @Inject constructor(
             } ?: emptyList()
             categoryDao.insertAll(categories.map { EntityMapper.toEntity(it, "vod") })
         }
-        
+
         // Load series categories
         val seriesResponse = apiService.getSeriesCategories(username, password)
         if (seriesResponse.isSuccessful) {
@@ -567,7 +567,7 @@ class IptvRepository @Inject constructor(
         categoryDao.deleteAll()
         cacheMetadataDao.deleteAll()
     }
-    
+
     suspend fun getLastProviderUpdateTime(): Long {
         val metadata = cacheMetadataDao.getCacheMetadata(allCacheKey)
         return metadata?.lastUpdated ?: 0L
@@ -592,7 +592,7 @@ class IptvRepository @Inject constructor(
     suspend fun getLiveStreams(): List<LiveStream> {
         return liveStreamDao.getAllLiveStreams().map { EntityMapper.liveStreamToDomain(it) }
     }
-    
+
     suspend fun getLiveStreamsByCategory(categoryId: String): List<LiveStream> {
         return liveStreamDao.getLiveStreamsByCategory(categoryId).map { EntityMapper.liveStreamToDomain(it) }
     }

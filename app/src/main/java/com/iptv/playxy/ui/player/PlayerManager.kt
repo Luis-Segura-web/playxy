@@ -9,7 +9,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
@@ -42,7 +41,6 @@ import kotlinx.coroutines.launch
 private const val TAG = "PlayerManager"
 private const val POSITION_UPDATE_INTERVAL_MS = 500L
 
-@OptIn(UnstableApi::class)
 @Singleton
 class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 

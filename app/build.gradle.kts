@@ -60,6 +60,17 @@ ksp {
     arg("room.generateKotlin", "true")
 }
 
+// Excluir el procesador Moshi de las configuraciones de annotation processor de Hilt
+// El warning viene porque moshi-kotlin-codegen se registra automáticamente como AP
+configurations.all {
+    exclude(group = "com.squareup.moshi", module = "moshi-kotlin-codegen")
+}
+
+// Re-agregar solo para KSP
+configurations.named("ksp") {
+    dependencies.add(project.dependencies.create(libs.moshi.codegen.get()))
+}
+
 dependencies {
     // Core Android
     implementation(libs.androidx.core.ktx)
@@ -103,9 +114,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
     
-    // Moshi for JSON parsing
+    // Moshi for JSON parsing (usando KSP para generación de adapters)
     implementation(libs.moshi)
-    implementation(libs.moshi.kotlin)
     ksp(libs.moshi.codegen)
     
     // Room for local database

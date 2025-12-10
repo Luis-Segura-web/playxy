@@ -28,7 +28,7 @@ import com.iptv.playxy.ui.Routes
 import com.iptv.playxy.ui.loading.LoadingScreen
 import com.iptv.playxy.ui.login.LoginScreen
 import com.iptv.playxy.ui.main.MainScreen
-import com.iptv.playxy.ui.movies.ActorDetailScreen
+import com.iptv.playxy.ui.components.ActorDetailScreen
 import com.iptv.playxy.ui.movies.MovieDetailScreen
 import com.iptv.playxy.ui.series.SeriesDetailScreen
 import com.iptv.playxy.ui.splash.SplashScreen
