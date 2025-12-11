@@ -715,6 +715,7 @@ fun UnderConstructionContent(section: String) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("DEPRECATION")
 @Composable
 fun SettingsContent(
     onLogout: () -> Unit,

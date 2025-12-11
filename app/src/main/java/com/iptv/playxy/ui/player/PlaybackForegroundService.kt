@@ -25,7 +25,7 @@ class PlaybackForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        stopForeground(true)
+        stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 

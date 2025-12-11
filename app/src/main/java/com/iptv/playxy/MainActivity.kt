@@ -82,7 +82,9 @@ class MainActivity : ComponentActivity() {
         pipController.handlePictureInPictureModeChanged(isInPictureInPictureMode, isFinishing)
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
+        @Suppress("DEPRECATION")
         super.onPictureInPictureModeChanged(isInPictureInPictureMode)
         pipController.handlePictureInPictureModeChanged(isInPictureInPictureMode, isFinishing)
     }

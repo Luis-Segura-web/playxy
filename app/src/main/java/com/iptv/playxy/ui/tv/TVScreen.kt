@@ -1,4 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
 package com.iptv.playxy.ui.tv
 
@@ -38,6 +37,7 @@ import com.iptv.playxy.ui.tv.components.ChannelListView
 import com.iptv.playxy.util.StreamUrlBuilder
 import kotlinx.coroutines.launch
 
+@Suppress("DEPRECATION")
 @Composable
 fun TVScreen(
     viewModel: TVViewModel = hiltViewModel(),

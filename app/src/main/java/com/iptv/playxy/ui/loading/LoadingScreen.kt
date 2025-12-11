@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.iptv.playxy.R
 
+@Suppress("DEPRECATION")
 @Composable
 fun LoadingScreen(
     viewModel: LoadingViewModel = hiltViewModel(),

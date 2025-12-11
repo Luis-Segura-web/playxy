@@ -76,8 +76,10 @@ fun PlayxyTheme(
         SideEffect {
             val window = (view.context as Activity).window
             // Set status bar to match background
+            @Suppress("DEPRECATION")
             window.statusBarColor = colorScheme.background.toArgb()
             // Set navigation bar to match surface
+            @Suppress("DEPRECATION")
             window.navigationBarColor = colorScheme.surface.toArgb()
             
             val insetsController = WindowCompat.getInsetsController(window, view)

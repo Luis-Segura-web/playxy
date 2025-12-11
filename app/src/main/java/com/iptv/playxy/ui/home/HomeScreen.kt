@@ -45,6 +45,7 @@ data class HomeContentItem(
     val seriesId: String? = null,
     val categoryId: String? = null
 )
+@Suppress("DEPRECATION")
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
@@ -214,7 +215,7 @@ private fun ModernHomeContent(
             if (state.trendingMovies.isNotEmpty()) {
                 ModernContentRow(
                     title = "Películas Populares",
-                    icon = Icons.Outlined.TrendingUp,
+                    icon = Icons.Outlined.LocalFireDepartment,
                     items = state.trendingMovies,
                     onItemClick = { item ->
                         onNavigateToMovie(item.streamId ?: "", item.categoryId ?: "")

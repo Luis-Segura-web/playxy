@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.iptv.playxy.data.db.PlayxyDatabase
+import com.iptv.playxy.util.EpisodesMapAdapter
 import com.squareup.moshi.Moshi
 import dagger.Module
 import dagger.Provides
@@ -24,7 +25,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideMoshi(): Moshi {
-        return Moshi.Builder().build()
+        return Moshi.Builder()
+            .add(EpisodesMapAdapter())  // Handle episodes field: array vs map
+            .build()
     }
     
     @Provides

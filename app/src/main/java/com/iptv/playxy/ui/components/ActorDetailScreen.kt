@@ -56,6 +56,7 @@ import com.iptv.playxy.domain.TmdbSeriesLink
 import com.iptv.playxy.ui.movies.MoviesViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("DEPRECATION")
 @Composable
 fun ActorDetailScreen(
     actorId: Int,

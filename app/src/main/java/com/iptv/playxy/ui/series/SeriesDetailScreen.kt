@@ -75,6 +75,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("DEPRECATION")
 @Composable
 fun SeriesDetailScreen(
     seriesId: String,
