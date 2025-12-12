@@ -20,7 +20,8 @@ object EntityMapper {
             isValid = profile.isValid,
             expiry = profile.expiry,
             maxConnections = profile.maxConnections,
-            status = profile.status
+            status = profile.status,
+            isActive = profile.isActive
         )
     }
     
@@ -35,7 +36,8 @@ object EntityMapper {
             isValid = entity.isValid,
             expiry = entity.expiry,
             maxConnections = entity.maxConnections,
-            status = entity.status
+            status = entity.status,
+            isActive = entity.isActive
         )
     }
     

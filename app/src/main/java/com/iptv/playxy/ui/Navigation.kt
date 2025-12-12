@@ -6,6 +6,7 @@ package com.iptv.playxy.ui
 object Routes {
     const val SPLASH = "splash"
     const val LOGIN = "login"
+    const val PROFILES = "profiles"
     const val LOADING = "loading"
     const val MAIN = "main"
     const val MOVIE_DETAIL = "movie_detail/{streamId}/{categoryId}?fromLink={fromLink}"

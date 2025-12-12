@@ -31,6 +31,7 @@ import com.iptv.playxy.ui.main.MainScreen
 import com.iptv.playxy.ui.components.ActorDetailScreen
 import com.iptv.playxy.ui.movies.MovieDetailScreen
 import com.iptv.playxy.ui.series.SeriesDetailScreen
+import com.iptv.playxy.ui.profiles.ProfileCenterScreen
 import com.iptv.playxy.ui.splash.SplashScreen
 import com.iptv.playxy.ui.theme.PlayxyTheme
 import com.iptv.playxy.ui.player.LocalPlayerContainerHost
@@ -121,6 +122,11 @@ fun PlayxyNavigation(repository: IptvRepository) {
                     navController.navigate(Routes.LOADING) {
                         popUpTo(Routes.SPLASH) { inclusive = true }
                     }
+                },
+                onNavigateToProfiles = {
+                    navController.navigate(Routes.PROFILES) {
+                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
                 }
             )
         }
@@ -134,6 +140,16 @@ fun PlayxyNavigation(repository: IptvRepository) {
                 }
             )
         }
+
+        composable(Routes.PROFILES) {
+            ProfileCenterScreen(
+                onProfileSelected = {
+                    navController.navigate(Routes.LOADING) {
+                        popUpTo(Routes.PROFILES) { inclusive = true }
+                    }
+                }
+            )
+        }
         
         composable(Routes.LOADING) {
             LoadingScreen(
@@ -143,7 +159,7 @@ fun PlayxyNavigation(repository: IptvRepository) {
                     }
                 },
                 onCancel = {
-                    navController.navigate(Routes.LOGIN) {
+                    navController.navigate(Routes.PROFILES) {
                         popUpTo(Routes.LOADING) { inclusive = true }
                     }
                 }
@@ -152,8 +168,8 @@ fun PlayxyNavigation(repository: IptvRepository) {
         
         composable(Routes.MAIN) {
             MainScreen(
-                onNavigateToLogin = {
-                    navController.navigate(Routes.LOGIN) {
+                onNavigateToProfiles = {
+                    navController.navigate(Routes.PROFILES) {
                         popUpTo(Routes.MAIN) { inclusive = true }
                     }
                 },

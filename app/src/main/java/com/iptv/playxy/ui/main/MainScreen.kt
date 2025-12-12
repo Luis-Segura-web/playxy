@@ -93,7 +93,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun MainScreen(
     viewModel: MainViewModel = hiltViewModel(),
-    onNavigateToLogin: () -> Unit,
+    onNavigateToProfiles: () -> Unit,
     onNavigateToLoading: () -> Unit,
     onNavigateToMovieDetail: (String, String) -> Unit,
     onNavigateToSeriesDetail: (String, String) -> Unit
@@ -107,7 +107,7 @@ fun MainScreen(
 
     LaunchedEffect(state.isLoggingOut) {
         if (state.isLoggingOut) {
-            onNavigateToLogin()
+            onNavigateToProfiles()
         }
     }
     

@@ -93,12 +93,21 @@ class LoginViewModel @Inject constructor(
             try {
                 val currentState = _state.value
                 
-                val loginInfo = repository.fetchAccountInfo(
+                val loginResult = repository.fetchAccountInfoWithError(
                     currentState.username,
                     currentState.password,
                     currentState.url
                 )
 
+                if (loginResult.isFailure) {
+                    _state.value = currentState.copy(
+                        isLoading = false,
+                        errorMessage = loginResult.exceptionOrNull()?.message ?: "Error de conexión"
+                    )
+                    return@launch
+                }
+
+                val loginInfo = loginResult.getOrNull()
                 val isValid = loginInfo?.userInfo?.status?.equals("active", ignoreCase = true) == true
                 if (isValid) {
                     val profile = UserProfile(
@@ -112,15 +121,24 @@ class LoginViewModel @Inject constructor(
                         status = loginInfo?.userInfo?.status
                     )
                     repository.saveProfile(profile)
+                    repository.clearUserData()
                     
                     _state.value = currentState.copy(
                         isLoading = false,
                         isValidated = true
                     )
                 } else {
+                    val status = loginInfo?.userInfo?.status
+                    val errorMsg = when {
+                        status.isNullOrBlank() -> "El servidor no devolvió información de cuenta"
+                        status.equals("expired", true) -> "La cuenta ha expirado"
+                        status.equals("disabled", true) -> "La cuenta está deshabilitada"
+                        status.equals("banned", true) -> "La cuenta está suspendida"
+                        else -> "Cuenta inactiva (estado: $status)"
+                    }
                     _state.value = currentState.copy(
                         isLoading = false,
-                        errorMessage = "Credenciales inválidas. Por favor verifique sus datos."
+                        errorMessage = errorMsg
                     )
                 }
             } catch (e: Exception) {

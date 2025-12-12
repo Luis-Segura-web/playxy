@@ -13,6 +13,7 @@ import javax.inject.Inject
 sealed class SplashNavigation {
     object ToLogin : SplashNavigation()
     object ToLoading : SplashNavigation()
+    object ToProfiles : SplashNavigation()
 }
 
 @HiltViewModel
@@ -29,15 +30,15 @@ class SplashViewModel @Inject constructor(
     
     private fun checkForValidProfile() {
         viewModelScope.launch {
-            val profile = repository.getProfile()
+            val activeProfile = repository.getProfile()
             
             // Wait a bit to show the splash screen
             kotlinx.coroutines.delay(2000)
             
-            if (profile != null && profile.isValid) {
-                _navigationEvent.value = SplashNavigation.ToLoading
-            } else {
-                _navigationEvent.value = SplashNavigation.ToLogin
+            _navigationEvent.value = when {
+                activeProfile != null && activeProfile.isValid -> SplashNavigation.ToLoading
+                repository.hasProfiles() -> SplashNavigation.ToProfiles
+                else -> SplashNavigation.ToLogin
             }
         }
     }

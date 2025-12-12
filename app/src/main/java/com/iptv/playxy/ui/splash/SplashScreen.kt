@@ -37,7 +37,8 @@ import com.iptv.playxy.R
 fun SplashScreen(
     viewModel: SplashViewModel = hiltViewModel(),
     onNavigateToLogin: () -> Unit,
-    onNavigateToLoading: () -> Unit
+    onNavigateToLoading: () -> Unit,
+    onNavigateToProfiles: () -> Unit
 ) {
     val navigationEvent by viewModel.navigationEvent.collectAsState()
     
@@ -50,6 +51,10 @@ fun SplashScreen(
             is SplashNavigation.ToLoading -> {
                 viewModel.onNavigationHandled()
                 onNavigateToLoading()
+            }
+            is SplashNavigation.ToProfiles -> {
+                viewModel.onNavigationHandled()
+                onNavigateToProfiles()
             }
             null -> {}
         }

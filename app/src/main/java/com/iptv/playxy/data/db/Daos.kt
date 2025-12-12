@@ -5,15 +5,36 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UserProfileDao {
-    @Query("SELECT * FROM user_profiles WHERE id = 1")
+    @Query("SELECT * FROM user_profiles WHERE isActive = 1 LIMIT 1")
     suspend fun getProfile(): UserProfileEntity?
     
-    @Query("SELECT * FROM user_profiles WHERE id = 1")
+    @Query("SELECT * FROM user_profiles WHERE isActive = 1 LIMIT 1")
     fun getProfileFlow(): Flow<UserProfileEntity?>
+
+    @Query("SELECT * FROM user_profiles ORDER BY lastUpdated DESC")
+    fun getProfilesFlow(): Flow<List<UserProfileEntity>>
+
+    @Query("SELECT COUNT(*) FROM user_profiles")
+    suspend fun countProfiles(): Int
+
+    @Query("SELECT * FROM user_profiles WHERE id = :id")
+    suspend fun getProfileById(id: Int): UserProfileEntity?
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertProfile(profile: UserProfileEntity)
+    suspend fun insertProfile(profile: UserProfileEntity): Long
+
+    @Update
+    suspend fun updateProfile(profile: UserProfileEntity)
+
+    @Query("UPDATE user_profiles SET isActive = 0")
+    suspend fun clearActive()
+
+    @Query("UPDATE user_profiles SET isActive = 1 WHERE id = :id")
+    suspend fun setActive(id: Int)
     
+    @Query("DELETE FROM user_profiles WHERE id = :id")
+    suspend fun deleteProfile(id: Int)
+
     @Query("DELETE FROM user_profiles")
     suspend fun deleteAllProfiles()
 }
@@ -239,6 +260,9 @@ interface FavoriteVodDao {
 
     @Query("DELETE FROM favorite_vod WHERE streamId = :streamId")
     suspend fun deleteFavorite(streamId: String)
+
+    @Query("DELETE FROM favorite_vod")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -279,6 +303,9 @@ interface FavoriteSeriesDao {
 
     @Query("DELETE FROM favorite_series WHERE seriesId = :seriesId")
     suspend fun deleteFavorite(seriesId: String)
+
+    @Query("DELETE FROM favorite_series")
+    suspend fun deleteAll()
 }
 
 @Dao

@@ -47,9 +47,15 @@ class IptvRepository @Inject constructor(
     private val seriesDao = database.seriesDao()
     private val categoryDao = database.categoryDao()
     private val cacheMetadataDao = database.cacheMetadataDao()
+    private val favoriteChannelDao = database.favoriteChannelDao()
     private val recentChannelDao = database.recentChannelDao()
+    private val favoriteVodDao = database.favoriteVodDao()
     private val recentVodDao = database.recentVodDao()
+    private val favoriteSeriesDao = database.favoriteSeriesDao()
     private val recentSeriesDao = database.recentSeriesDao()
+    private val movieProgressDao = database.movieProgressDao()
+    private val seriesProgressDao = database.seriesProgressDao()
+    private val episodeProgressDao = database.episodeProgressDao()
     private val recentsEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
     private val prefEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
     private val vodInfoCacheMutex = Mutex()
@@ -81,11 +87,59 @@ class IptvRepository @Inject constructor(
     }
     
     fun getProfileFlow(): Flow<UserProfile?> {
-        return userProfileDao.getProfileFlow().map { it?.let { EntityMapper.toDomain(it) } }
+        return userProfileDao.getProfileFlow().map { entity -> entity?.let { EntityMapper.toDomain(it) } }
     }
 
-    suspend fun saveProfile(profile: UserProfile) {
-        userProfileDao.insertProfile(EntityMapper.toEntity(profile))
+    suspend fun getProfileById(id: Int): UserProfile? {
+        return userProfileDao.getProfileById(id)?.let { EntityMapper.toDomain(it) }
+    }
+
+    fun getProfilesFlow(): Flow<List<UserProfile>> {
+        return userProfileDao.getProfilesFlow().map { list -> list.map { EntityMapper.toDomain(it) } }
+    }
+
+    suspend fun hasProfiles(): Boolean = userProfileDao.countProfiles() > 0
+
+    suspend fun saveProfile(profile: UserProfile, setActive: Boolean = true) {
+        val entity = EntityMapper.toEntity(profile).copy(
+            lastUpdated = System.currentTimeMillis(),
+            isActive = setActive
+        )
+        database.withTransaction {
+            if (entity.isActive) {
+                userProfileDao.clearActive()
+            }
+            userProfileDao.insertProfile(entity)
+        }
+    }
+
+    suspend fun updateProfile(profile: UserProfile, setActive: Boolean = false) {
+        val entity = EntityMapper.toEntity(profile).copy(
+            lastUpdated = System.currentTimeMillis(),
+            isActive = setActive
+        )
+        database.withTransaction {
+            if (entity.isActive) {
+                userProfileDao.clearActive()
+            }
+            userProfileDao.insertProfile(entity)
+        }
+    }
+
+    suspend fun setActiveProfile(profileId: Int) {
+        database.withTransaction {
+            userProfileDao.clearActive()
+            userProfileDao.setActive(profileId)
+        }
+        clearUserData()
+    }
+
+    suspend fun deleteProfile(profileId: Int) {
+        userProfileDao.deleteProfile(profileId)
+    }
+
+    suspend fun deactivateProfiles() {
+        userProfileDao.clearActive()
     }
 
     private fun parseExpirySeconds(expDate: String?): Long? {
@@ -134,14 +188,60 @@ class IptvRepository @Inject constructor(
             null
         }
     }
+    
+    /**
+     * Fetches account info with detailed error reporting.
+     * Returns a Result with either the LoginResponse or an error message.
+     */
+    suspend fun fetchAccountInfoWithError(
+        username: String,
+        password: String,
+        baseUrl: String
+    ): Result<com.iptv.playxy.data.api.LoginResponse> {
+        return try {
+            val apiService = apiServiceFactory.createService(baseUrl)
+            val response = apiService.validateCredentials(username, password)
+            when {
+                response.isSuccessful && response.body() != null -> {
+                    val body = response.body()!!
+                    if (body.userInfo == null) {
+                        Result.failure(Exception("El servidor no devolvió información de usuario"))
+                    } else {
+                        Result.success(body)
+                    }
+                }
+                response.code() == 401 || response.code() == 403 -> {
+                    Result.failure(Exception("Usuario o contraseña incorrectos"))
+                }
+                response.code() == 404 -> {
+                    Result.failure(Exception("URL del servidor no válida"))
+                }
+                response.code() >= 500 -> {
+                    Result.failure(Exception("Error del servidor (${response.code()})"))
+                }
+                else -> {
+                    Result.failure(Exception("Error de conexión (${response.code()})"))
+                }
+            }
+        } catch (e: java.net.UnknownHostException) {
+            Result.failure(Exception("No se puede conectar al servidor. Verifica la URL."))
+        } catch (e: java.net.SocketTimeoutException) {
+            Result.failure(Exception("Tiempo de espera agotado. Verifica tu conexión."))
+        } catch (e: java.net.ConnectException) {
+            Result.failure(Exception("No se pudo conectar al servidor."))
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(Exception("Error de conexión: ${e.message ?: "Error desconocido"}"))
+        }
+    }
 
     suspend fun refreshStoredProfileInfo(): UserProfile? {
         val stored = userProfileDao.getProfile() ?: return null
         val domain = EntityMapper.toDomain(stored)
         val login = fetchAccountInfo(domain.username, domain.password, domain.url)
         val updated = updateProfileWithAccountInfo(domain, login)
-        saveProfile(updated)
-        return updated
+        updateProfile(updated, setActive = domain.isActive)
+        return updated.copy(isActive = domain.isActive)
     }
     
     // Content loading operations
@@ -566,6 +666,19 @@ class IptvRepository @Inject constructor(
         seriesDao.deleteAll()
         categoryDao.deleteAll()
         cacheMetadataDao.deleteAll()
+    }
+
+    suspend fun clearUserData() {
+        clearCache()
+        favoriteChannelDao.deleteAll()
+        recentChannelDao.deleteAll()
+        favoriteVodDao.deleteAll()
+        recentVodDao.deleteAll()
+        favoriteSeriesDao.deleteAll()
+        recentSeriesDao.deleteAll()
+        movieProgressDao.deleteAll()
+        seriesProgressDao.deleteAll()
+        episodeProgressDao.deleteAll()
     }
 
     suspend fun getLastProviderUpdateTime(): Long {

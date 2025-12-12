@@ -173,8 +173,8 @@ class MainViewModel @Inject constructor(
     fun onLogout() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoggingOut = true)
-            repository.deleteProfile()
-            repository.clearCache()
+            repository.deactivateProfiles()
+            repository.clearUserData()
         }
     }
     

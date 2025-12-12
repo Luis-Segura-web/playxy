@@ -1,7 +1,7 @@
 package com.iptv.playxy.domain
 
 data class UserProfile(
-    val id: Int = 1,
+    val id: Int = 0,
     val profileName: String,
     val username: String,
     val password: String,
@@ -10,5 +10,6 @@ data class UserProfile(
     val isValid: Boolean = true,
     val expiry: Long? = null,
     val maxConnections: Int? = null,
-    val status: String? = null
+    val status: String? = null,
+    val isActive: Boolean = false
 )

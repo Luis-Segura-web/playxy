@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 
 @Entity(tableName = "user_profiles")
 data class UserProfileEntity(
-    @PrimaryKey val id: Int = 1,
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val profileName: String,
     val username: String,
     val password: String,
@@ -15,7 +15,8 @@ data class UserProfileEntity(
     val isValid: Boolean,
     val expiry: Long?,
     val maxConnections: Int?,
-    val status: String?
+    val status: String?,
+    val isActive: Boolean = false
 )
 
 @Entity(

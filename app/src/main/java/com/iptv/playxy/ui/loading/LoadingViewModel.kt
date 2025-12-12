@@ -67,7 +67,7 @@ class LoadingViewModel @Inject constructor(
                 if (profile == null) {
                     _state.value = _state.value.copy(
                         hasError = true,
-                        errorMessage = "No se encontró perfil de usuario",
+                        errorMessage = "Selecciona o crea un perfil para continuar",
                         canRetry = false
                     )
                     return@launch
