@@ -84,6 +84,7 @@ import com.iptv.playxy.ui.MainDestination
 import com.iptv.playxy.ui.tv.TVScreen
 import com.iptv.playxy.ui.movies.MoviesScreen
 import com.iptv.playxy.ui.series.SeriesScreen
+import com.iptv.playxy.ui.settings.SettingsViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -99,6 +100,7 @@ fun MainScreen(
     onNavigateToSeriesDetail: (String, String) -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val settingsViewModel: SettingsViewModel = hiltViewModel()
     val fullscreenState = LocalFullscreenState.current
     val isFullscreen = fullscreenState.value
     val playerManager = LocalPlayerManager.current
@@ -123,7 +125,7 @@ fun MainScreen(
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            if (!isFullscreen && !hideUiForPip) {
+            if (!isFullscreen && !hideUiForPip && state.currentDestination != MainDestination.SETTINGS) {
                 // Show search bar as TopBar when searching is active
                 if (state.isSearching && state.currentDestination in listOf(
                         MainDestination.TV,
@@ -233,13 +235,15 @@ fun MainScreen(
                                         MainDestination.SERIES -> state.lastSeriesUpdateTime
                                         else -> 0L
                                     }
-                                    val dateFormat = remember { SimpleDateFormat("dd/MM", Locale.getDefault()) }
+                                    val dateFormat = remember { SimpleDateFormat("dd MMM HH:mm", Locale.getDefault()) }
                                     val lastUpdateText = if (lastUpdateTime > 0) {
                                         "Actualizado: ${dateFormat.format(Date(lastUpdateTime))}"
                                     } else {
                                         "Sin sincronizar"
                                     }
-                                    val subtitle = if (contentCount > 0) {
+                                    val numberFormat = remember { java.text.NumberFormat.getIntegerInstance(Locale.getDefault()) }
+                                    val subtitle = ""
+                                    if (false) {
                                         "$lastUpdateText • $contentCount $contentLabel"
                                     } else {
                                         lastUpdateText
@@ -250,6 +254,18 @@ fun MainScreen(
                                             style = MaterialTheme.typography.titleLarge,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
+                                        Text(
+                                            text = lastUpdateText,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (contentCount > 0) {
+                                            Text(
+                                                text = "${numberFormat.format(contentCount)} $contentLabel",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                         if (subtitle.isNotEmpty()) {
                                             Text(
                                                 text = subtitle,
@@ -503,7 +519,8 @@ fun MainScreen(
                     onForceReload = {
                         viewModel.onForceReload()
                         onNavigateToLoading()
-                    }
+                    },
+                    viewModel = settingsViewModel
                 )
             }
 

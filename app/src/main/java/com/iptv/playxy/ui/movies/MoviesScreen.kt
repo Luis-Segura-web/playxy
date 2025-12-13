@@ -24,16 +24,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
 import coil.compose.AsyncImage
 import com.iptv.playxy.domain.VodStream
 import com.iptv.playxy.ui.components.CategoryBar
@@ -117,8 +124,8 @@ fun MoviesGrid(
             columns = GridCells.Fixed(3), // Mínimo 3 columnas fijas
             modifier = modifier,
             contentPadding = PaddingValues(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             items(movies.itemCount) { index ->
                 val movie = movies[index] ?: return@items
@@ -247,16 +254,51 @@ fun MoviePosterItem(
         Spacer(modifier = Modifier.height(10.dp))
 
         // Título mejorado
-        Text(
+        AutoFitGridTitle(
             text = movie.name,
             style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun AutoFitGridTitle(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 3,
+    minFontSize: TextUnit = 10.sp
+) {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier = modifier) {
+        val maxWidthPx = with(density) { maxWidth.toPx() }.toInt()
+        val baseFontSize = style.fontSize.takeIf { it != TextUnit.Unspecified } ?: 14.sp
+        val fittedSize = remember(text, maxWidthPx) {
+            var size = baseFontSize
+            while (size > minFontSize) {
+                val result = measurer.measure(
+                    text = AnnotatedString(text),
+                    style = style.copy(fontSize = size),
+                    constraints = Constraints(maxWidth = maxWidthPx),
+                    maxLines = maxLines
+                )
+                if (!result.hasVisualOverflow) break
+                size = (size.value - 1f).sp
+            }
+            size
+        }
+        Text(
+            text = text,
+            style = style.copy(fontSize = fittedSize),
             fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = maxLines,
+            overflow = TextOverflow.Clip,
             textAlign = TextAlign.Start,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.fillMaxWidth(),
-            lineHeight = 18.sp
+            lineHeight = 18.sp,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

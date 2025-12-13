@@ -669,6 +669,7 @@ class IptvRepository @Inject constructor(
     }
 
     suspend fun clearUserData() {
+        clearInMemoryCaches()
         clearCache()
         favoriteChannelDao.deleteAll()
         recentChannelDao.deleteAll()
@@ -679,6 +680,12 @@ class IptvRepository @Inject constructor(
         movieProgressDao.deleteAll()
         seriesProgressDao.deleteAll()
         episodeProgressDao.deleteAll()
+    }
+
+    private suspend fun clearInMemoryCaches() {
+        vodInfoCacheMutex.withLock { vodInfoCache.clear() }
+        seriesInfoCacheMutex.withLock { seriesInfoCache.clear() }
+        actorCacheMutex.withLock { actorCache.clear() }
     }
 
     suspend fun getLastProviderUpdateTime(): Long {

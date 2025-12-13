@@ -23,9 +23,16 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.iptv.playxy.domain.LiveStream
 
@@ -161,24 +168,20 @@ fun ChannelRow(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
+                val titleStyle = if (isPlaying) {
+                    MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                } else {
+                    MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                }
+                val titleColor = if (isPlaying) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+                AutoFitChannelTitle(
                     text = channel.name,
-                    style = if (isPlaying) {
-                        MaterialTheme.typography.bodyLarge.copy(
-                            fontWeight = FontWeight.Bold
-                        )
-                    } else {
-                        MaterialTheme.typography.bodyLarge.copy(
-                            fontWeight = FontWeight.Medium
-                        )
-                    },
-                    color = if (isPlaying) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    style = titleStyle,
+                    color = titleColor
                 )
                 
                 // Estado
@@ -232,5 +235,42 @@ fun ChannelRow(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AutoFitChannelTitle(
+    text: String,
+    style: TextStyle,
+    color: Color,
+    maxLines: Int = 3,
+    minFontSize: TextUnit = 12.sp
+) {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val maxWidthPx = with(density) { maxWidth.toPx() }.toInt()
+        val baseFontSize = style.fontSize.takeIf { it != TextUnit.Unspecified } ?: 16.sp
+        val fittedSize = remember(text, maxWidthPx, baseFontSize) {
+            var size = baseFontSize
+            while (size > minFontSize) {
+                val result = measurer.measure(
+                    text = AnnotatedString(text),
+                    style = style.copy(fontSize = size),
+                    constraints = Constraints(maxWidth = maxWidthPx),
+                    maxLines = maxLines
+                )
+                if (!result.hasVisualOverflow) break
+                size = (size.value - 1f).sp
+            }
+            size
+        }
+        Text(
+            text = text,
+            style = style.copy(fontSize = fittedSize),
+            color = color,
+            maxLines = maxLines,
+            overflow = TextOverflow.Clip
+        )
     }
 }
