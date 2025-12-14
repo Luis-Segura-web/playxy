@@ -116,11 +116,8 @@ dependencies {
     // Coil for image loading
     implementation(libs.coil.compose)
     
-    // Media3 (ExoPlayer) for video playback
-    implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.ui)
-    implementation(libs.androidx.media3.exoplayer.hls)
-    implementation(libs.androidx.media3.session)
+    // VLC (LibVLC) for video playback
+    implementation(libs.videolan.libvlc.all)
     
     // Paging
     implementation(libs.androidx.paging.runtime)

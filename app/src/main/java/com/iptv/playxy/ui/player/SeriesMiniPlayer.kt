@@ -127,7 +127,7 @@ fun SeriesMiniPlayer(
 }
 
 @Composable
-private fun SeriesMiniPlayerOverlay(
+internal fun SeriesMiniPlayerOverlay(
     state: PlaybackUiState,
     title: String,
     seasonNumber: Int,

@@ -1,7 +1,6 @@
 package com.iptv.playxy.ui.player
 
 import android.app.Activity
-import android.content.pm.ActivityInfo
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -132,7 +131,7 @@ fun FullscreenPlayer(
 }
 
 @Composable
-private fun FullscreenOverlay(
+internal fun FullscreenOverlay(
     state: PlaybackUiState,
     title: String,
     playerType: PlayerType,
@@ -160,7 +159,7 @@ private fun FullscreenOverlay(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
-                    )
+)
                 )
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .align(Alignment.TopCenter)
@@ -319,10 +318,9 @@ private fun FullscreenOverlay(
 }
 
 @Composable
-private fun ImmersiveMode() {
+internal fun ImmersiveMode() {
     val activity = LocalContext.current as? Activity
     DisposableEffect(Unit) {
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         val window = activity?.window
         if (window != null) {
             val controller = WindowCompat.getInsetsController(window, window.decorView)
@@ -341,7 +339,6 @@ private fun ImmersiveMode() {
         }
 
         onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             val disposeWindow = activity?.window
             if (disposeWindow != null) {
                 val controller = WindowCompat.getInsetsController(disposeWindow, disposeWindow.decorView)

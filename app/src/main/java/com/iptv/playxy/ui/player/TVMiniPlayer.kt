@@ -115,7 +115,7 @@ fun TVMiniPlayer(
 }
 
 @Composable
-private fun TVMiniOverlay(
+internal fun TVMiniOverlay(
     state: PlaybackUiState,
     channelName: String,
     hasTrackOptions: Boolean,

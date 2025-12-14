@@ -1,5 +1,6 @@
 package com.iptv.playxy.ui.series
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -66,10 +67,13 @@ import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.components.DetailLoadingScreen
-import com.iptv.playxy.ui.player.FullscreenPlayer
-import com.iptv.playxy.ui.player.PlayerSurface
+import com.iptv.playxy.ui.player.FullscreenOverlay
+import com.iptv.playxy.ui.player.ImmersiveMode
+import com.iptv.playxy.ui.player.LocalPlayerContainerHost
+import com.iptv.playxy.ui.player.PlayerContainerConfig
 import com.iptv.playxy.ui.player.PlayerType
-import com.iptv.playxy.ui.player.SeriesMiniPlayer
+import com.iptv.playxy.ui.player.SeriesMiniPlayerOverlay
+import com.iptv.playxy.ui.player.TrackSelectionDialog
 import com.iptv.playxy.util.StreamUrlBuilder
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -109,6 +113,7 @@ fun SeriesDetailScreen(
     val pipController = LocalPipController.current
     val isInPip by pipController.isInPip.collectAsStateWithLifecycle()
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
+    val playerContainer = LocalPlayerContainerHost.current
     var isEpisodeSwitching by remember { mutableStateOf(false) }
     val series = uiState.series
     val lastEpisodeCover = uiState.lastEpisode?.info?.cover
@@ -259,6 +264,7 @@ fun SeriesDetailScreen(
                 }
             }
         }
+
     }
 
     // Restaurar posición cuando hay lastPositionMs y el reproductor está listo
@@ -375,34 +381,36 @@ fun SeriesDetailScreen(
         DetailLoadingScreen(
             onBackClick = onBackClick
         )
-    } else if (isFullscreen && currentEpisode != null && userProfile != null && currentStreamUrl != null) {
-        // Fullscreen player in landscape mode
-        FullscreenPlayer(
-            streamUrl = currentStreamUrl,
-            title = "${displayTitle.ifBlank { uiState.series?.name.orEmpty() }} - T${currentEpisode!!.season} E${currentEpisode!!.episodeNum}",
-            playerType = PlayerType.SERIES,
-            playerManager = playerManager,
-            onBack = {
-                fullscreenState.value = false
-            },
-            onPreviousItem = {
-                if (currentEpisodeIndex > 0) {
-                    isEpisodeSwitching = true
-                    playerManager.stopPlayback()
-                    currentEpisode = allEpisodes[currentEpisodeIndex - 1]
-                }
-            },
-            onNextItem = {
-                if (currentEpisodeIndex < allEpisodes.size - 1) {
-                    isEpisodeSwitching = true
-                    playerManager.stopPlayback()
-                    currentEpisode = allEpisodes[currentEpisodeIndex + 1]
-                }
-            },
-            hasPrevious = currentEpisodeIndex > 0,
-            hasNext = currentEpisodeIndex < allEpisodes.size - 1
-        )
     } else {
+        var showTrackDialog by remember { mutableStateOf(false) }
+
+        val stopAndClose: () -> Unit = {
+            if (uiState.series != null && currentEpisode != null) {
+                val currentPos = playerManager.getCurrentPosition()
+                val episodeToSave = currentEpisode!!
+                if (currentPos > 0) {
+                    viewModel.saveProgress(uiState.series!!.seriesId, episodeToSave, currentPos)
+                }
+            }
+            playerManager.stopPlayback()
+            isPlaying = false
+            currentEpisode = null
+            fullscreenState.value = false
+        }
+
+        if (isFullscreen && shouldShowHeaderPlayer) {
+            BackHandler { fullscreenState.value = false }
+            ImmersiveMode()
+        }
+
+        if (shouldShowHeaderPlayer && currentStreamUrl != null) {
+            LaunchedEffect(currentStreamUrl) {
+                if (playbackState.streamUrl != currentStreamUrl) {
+                    playerManager.playMedia(currentStreamUrl, PlayerType.SERIES)
+                }
+            }
+        }
+
         val gradient = Brush.verticalGradient(
             listOf(
                 MaterialTheme.colorScheme.background,
@@ -436,58 +444,117 @@ fun SeriesDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-            ) {
+            ) column@{
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .background(MaterialTheme.colorScheme.surface)
+                    modifier =
+                        if (isFullscreen && shouldShowHeaderPlayer) {
+                            Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surface)
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .background(MaterialTheme.colorScheme.surface)
+                        }
                 ) {
                     val series = uiState.series
                     if (shouldShowHeaderPlayer && currentStreamUrl != null) {
                         val ep = currentEpisode!!
-                        SeriesMiniPlayer(
-                            streamUrl = currentStreamUrl,
-                            episodeTitle = displayEpisodeTitle(ep, series?.name),
-                            seasonNumber = ep.season,
-                            episodeNumber = ep.episodeNum,
-                            playerManager = playerManager,
-                            onPreviousEpisode = {
-                                if (currentEpisodeIndex > 0) {
-                                    isEpisodeSwitching = true
-                                    playerManager.stopPlayback()
-                                    val prevEpisode = allEpisodes[currentEpisodeIndex - 1]
-                                    currentEpisode = prevEpisode
-                                    viewModel.setCurrentPlayingEpisode(prevEpisode.id)
-                                }
-                            },
-                            onNextEpisode = {
-                                if (currentEpisodeIndex < allEpisodes.size - 1) {
-                                    isEpisodeSwitching = true
-                                    playerManager.stopPlayback()
-                                    val nextEpisode = allEpisodes[currentEpisodeIndex + 1]
-                                    currentEpisode = nextEpisode
-                                    viewModel.setCurrentPlayingEpisode(nextEpisode.id)
-                                }
-                            },
-                            onClose = {
-                                // Guardar progreso antes de cerrar
-                                if (uiState.series != null && currentEpisode != null) {
-                                    val currentPos = playerManager.getCurrentPosition()
-                                    val episodeToSave = currentEpisode!!
-                                    if (currentPos > 0) {
-                                        viewModel.saveProgress(uiState.series!!.seriesId, episodeToSave, currentPos)
+                        val episodeTitle = displayEpisodeTitle(ep, series?.name)
+                        val hasPrevious = currentEpisodeIndex > 0
+                        val hasNext = currentEpisodeIndex < allEpisodes.size - 1
+
+                        playerContainer(
+                            PlayerContainerConfig(
+                                state = playbackState,
+                                modifier = Modifier.fillMaxSize(),
+                                controlsLocked = showTrackDialog,
+                                overlay = { state, _, setControlsVisible ->
+                                    val onPreviousEpisode: () -> Unit = {
+                                        if (currentEpisodeIndex > 0) {
+                                            isEpisodeSwitching = true
+                                            playerManager.stopPlayback()
+                                            val prevEpisode = allEpisodes[currentEpisodeIndex - 1]
+                                            currentEpisode = prevEpisode
+                                            viewModel.setCurrentPlayingEpisode(prevEpisode.id)
+                                        }
+                                    }
+                                    val onNextEpisode: () -> Unit = {
+                                        if (currentEpisodeIndex < allEpisodes.size - 1) {
+                                            isEpisodeSwitching = true
+                                            playerManager.stopPlayback()
+                                            val nextEpisode = allEpisodes[currentEpisodeIndex + 1]
+                                            currentEpisode = nextEpisode
+                                            viewModel.setCurrentPlayingEpisode(nextEpisode.id)
+                                        }
+                                    }
+
+                                    if (isFullscreen) {
+                                        FullscreenOverlay(
+                                            state = state,
+                                            title = "${displayTitle.ifBlank { uiState.series?.name.orEmpty() }} - T${ep.season} E${ep.episodeNum}",
+                                            playerType = PlayerType.SERIES,
+                                            hasTrackOptions = state.tracks.hasDialogOptions,
+                                            hasProgress = true,
+                                            hasPrevious = hasPrevious,
+                                            hasNext = hasNext,
+                                            onBack = {
+                                                fullscreenState.value = false
+                                                setControlsVisible(true)
+                                            },
+                                            onShowTracks = {
+                                                setControlsVisible(true)
+                                                showTrackDialog = true
+                                            },
+                                            onTogglePlay = {
+                                                if (state.isPlaying) playerManager.pause() else playerManager.play()
+                                            },
+                                            onSeekBack = { playerManager.seekBackward() },
+                                            onSeekForward = { playerManager.seekForward() },
+                                            onRetry = { playerManager.playMedia(currentStreamUrl, PlayerType.SERIES, forcePrepare = true) },
+                                            onSeek = { position -> playerManager.seekTo(position) },
+                                            onPrevious = onPreviousEpisode,
+                                            onNext = onNextEpisode,
+                                            enablePrevious = hasPrevious,
+                                            enableNext = hasNext,
+                                            onPip = { pipController.requestPip(onClose = stopAndClose) }
+                                        )
+                                    } else {
+                                        SeriesMiniPlayerOverlay(
+                                            state = state,
+                                            title = episodeTitle,
+                                            seasonNumber = ep.season,
+                                            episodeNumber = ep.episodeNum,
+                                            hasTrackOptions = state.tracks.hasDialogOptions,
+                                            hasPrevious = hasPrevious,
+                                            hasNext = hasNext,
+                                            showEpisodeControls = true,
+                                            onClose = {
+                                                stopAndClose()
+                                                setControlsVisible(true)
+                                            },
+                                            onReplay = { playerManager.playMedia(currentStreamUrl, PlayerType.SERIES, forcePrepare = true) },
+                                            onSeekBack = { playerManager.seekBackward() },
+                                            onSeekForward = { playerManager.seekForward() },
+                                            onTogglePlay = {
+                                                if (state.isPlaying) playerManager.pause() else playerManager.play()
+                                            },
+                                            onShowTracks = {
+                                                setControlsVisible(true)
+                                                showTrackDialog = true
+                                            },
+                                            onFullscreen = { fullscreenState.value = true },
+                                            onSeek = { position -> playerManager.seekTo(position) },
+                                            onPrevious = onPreviousEpisode,
+                                            onNext = onNextEpisode,
+                                            enablePrevious = hasPrevious,
+                                            enableNext = hasNext,
+                                            onPip = { pipController.requestPip(onClose = stopAndClose) }
+                                        )
                                     }
                                 }
-                                playerManager.stopPlayback()
-                                isPlaying = false
-                                // No limpiar currentPlayingEpisodeId para que el episodio siga seleccionado
-                                currentEpisode = null
-                            },
-                            onFullscreen = {
-                                fullscreenState.value = true
-                            },
-                            modifier = Modifier.fillMaxSize()
+                            )
                         )
                     } else if (series != null) {
                         AsyncImage(
@@ -535,6 +602,10 @@ fun SeriesDetailScreen(
                             )
                         }
                     }
+                }
+
+                if (isFullscreen && shouldShowHeaderPlayer) {
+                    return@column
                 }
 
                 if (uiState.isLoading) {

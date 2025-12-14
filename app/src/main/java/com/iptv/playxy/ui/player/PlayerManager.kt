@@ -1,27 +1,8 @@
 package com.iptv.playxy.ui.player
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.Tracks
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
-import androidx.media3.session.MediaSession
-import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionResult
-import androidx.media3.ui.PlayerView
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,6 +18,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
 
 private const val TAG = "PlayerManager"
 private const val POSITION_UPDATE_INTERVAL_MS = 500L
@@ -47,76 +34,26 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val appContext = context.applicationContext
 
-    private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-        .setConnectTimeoutMs(25_000)
-        .setReadTimeoutMs(25_000)
-        .setAllowCrossProtocolRedirects(true)
-        .setUserAgent("PlayXY/Media3-1.8.0")
-
-    private val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
-
-    private val trackSelector = DefaultTrackSelector(context).apply {
-        // Algunos streams no informan frame rate; limitamos a 30 fps para evitar configuraciones de 1 fps en ciertos decodificadores.
-        setParameters(buildUponParameters().setMaxVideoFrameRate(30))
-    }
-
-    private val dataSourceFactory = DefaultDataSource.Factory(
-        context,
-        httpDataSourceFactory.setTransferListener(bandwidthMeter)
-    )
-
-    private val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-        .setLiveTargetOffsetMs(9_000)
-
-    private val renderersFactory = DefaultRenderersFactory(context)
-        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-        .setEnableDecoderFallback(true)
-
-    private val loadControl = DefaultLoadControl.Builder()
-        .setBufferDurationsMs(
-            /* minBufferMs = */ 40_000,
-            /* maxBufferMs = */ 120_000,
-            /* bufferForPlaybackMs = */ 4_000,
-            /* bufferForPlaybackAfterRebufferMs = */ 8_000
-        )
-        .setBackBuffer(0, false)
-        .setPrioritizeTimeOverSizeThresholds(true)
-        .build()
-
-    private val liveSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
-        .setFallbackMinPlaybackSpeed(0.97f)
-        .setFallbackMaxPlaybackSpeed(1.02f)
-        .setMaxLiveOffsetErrorMsForUnitSpeed(1_500L)
-        .build()
-
     private var foregroundServiceActive = false
     private var nextAction: (() -> Unit)? = null
     private var previousAction: (() -> Unit)? = null
 
-    private val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory)
-        .setTrackSelector(trackSelector)
-        .setLoadControl(loadControl)
-        .setLivePlaybackSpeedControl(liveSpeedControl)
-        .setBandwidthMeter(bandwidthMeter)
-        .setMediaSourceFactory(mediaSourceFactory)
-        .setHandleAudioBecomingNoisy(true)
-        .build().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                true
-            )
-            setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
-            setWakeMode(C.WAKE_MODE_NETWORK)
-        }
+    private val libVlc = LibVLC(
+        appContext,
+        arrayListOf(
+            "--no-video-title-show",
+            "--audio-time-stretch",
+            "--http-reconnect",
+            "--network-caching=3500",
+            "--live-caching=3000",
+            "--clock-jitter=0",
+            "--clock-synchro=0"
+        )
+    )
 
-    private val mediaSession = MediaSession.Builder(appContext, player)
-        .setId("PlayxyMediaSession")
-        .build()
+    private val mediaPlayer = MediaPlayer(libVlc)
+    private var currentVideoLayout: VLCVideoLayout? = null
 
-    private var currentPlayerView: PlayerView? = null
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
 
@@ -124,86 +61,141 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private var progressJob: Job? = null
     private var trackLookup: Map<String, TrackOption> = emptyMap()
     private var userStopped = false
-    
-    // Auto-retry configuration
+    private var isIdle = true
+    private var bufferingPercent: Float = 0f
+
     private var retryCount = 0
     private var retryJob: Job? = null
+    private var prepareJob: Job? = null
+    private var videoReattachJob: Job? = null
+    private var videoReattachAttempts: Int = 0
+    private var detachViewsJob: Job? = null
+    private val stopEventsToIgnore = AtomicInteger(0)
     private val maxRetries = 3
     private val retryDelayMs = 2000L
+    private val detachViewsDelayMs = 900L
 
     init {
-        player.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                _uiState.update { state ->
-                    state.copy(
-                        isBuffering = playbackState == Player.STATE_BUFFERING,
-                        isPlaying = player.isPlaying,
-                        hasError = if (playbackState == Player.STATE_IDLE) state.hasError else false
-                    )
-                }
-                if (playbackState == Player.STATE_READY) {
-                    // Reset retry count on successful playback
-                    retryCount = 0
-                    updateProgress()
-                    userStopped = false
-                } else if ((playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) && currentRequest != null && !userStopped) {
-                    handleAutoRestart("Playback stopped (state=$playbackState)")
-                }
-            }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _uiState.update { it.copy(isPlaying = isPlaying, isBuffering = if (isPlaying) false else it.isBuffering) }
-                updateForegroundPlayback(isPlaying)
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "Playback error (retry $retryCount/$maxRetries)", error)
-                
-                // Attempt auto-retry
-                if (retryCount < maxRetries && currentRequest != null) {
-                    retryCount++
-                    _uiState.update {
-                        it.copy(
-                            isBuffering = true,
-                            hasError = false,
-                            errorMessage = "Reintentando... ($retryCount/$maxRetries)"
-                        )
+        mediaPlayer.setEventListener { event ->
+            scope.launch {
+                when (event.type) {
+                    MediaPlayer.Event.Buffering -> {
+                        bufferingPercent = event.buffering.coerceIn(0f, 100f)
+                        _uiState.update {
+                            val durationMs = it.durationMs.takeIf { d -> d > 0L } ?: safeDurationMs()
+                            val bufferedMs = if (durationMs > 0L) {
+                                (durationMs * (bufferingPercent / 100f)).toLong()
+                            } else {
+                                it.bufferedPositionMs
+                            }
+                            it.copy(isBuffering = bufferingPercent < 100f, bufferedPositionMs = bufferedMs)
+                        }
                     }
-                    scheduleRetry()
-                } else {
-                    _uiState.update {
-                        it.copy(
-                            hasError = true,
-                            errorMessage = error.localizedMessage ?: "Error de reproducción",
-                            isPlaying = false,
-                            isBuffering = false
-                        )
+
+                    MediaPlayer.Event.Playing -> {
+                        retryJob?.cancel()
+                        retryCount = 0
+                        userStopped = false
+                        bufferingPercent = 100f
+                        _uiState.update {
+                            it.copy(
+                                isPlaying = true,
+                                isBuffering = false,
+                                hasError = false,
+                                errorMessage = null
+                            )
+                        }
+                        updateForegroundPlayback(true)
+                        updateTracksFromPlayer()
                     }
-                    updateForegroundPlayback(false)
+
+                    MediaPlayer.Event.Paused -> {
+                        _uiState.update { it.copy(isPlaying = false) }
+                        updateForegroundPlayback(false)
+                    }
+
+                    MediaPlayer.Event.Vout -> {
+                        if (event.voutCount > 0) {
+                            videoReattachJob?.cancel()
+                            videoReattachAttempts = 0
+                            _uiState.update { it.copy(firstFrameRendered = true, isBuffering = false) }
+                            retryCount = 0
+                        } else if (mediaPlayer.isPlaying && currentRequest != null) {
+                            scheduleVideoReattach("Vout=0")
+                        }
+                    }
+
+                    MediaPlayer.Event.EncounteredError -> {
+                        Log.e(TAG, "Playback error (retry $retryCount/$maxRetries)")
+                        handlePlaybackError("Error de reproducción")
+                    }
+
+                    MediaPlayer.Event.EndReached -> {
+                        if (currentRequest != null && !userStopped) {
+                            handleAutoRestart("Playback ended")
+                        } else {
+                            isIdle = true
+                            updateForegroundPlayback(false)
+                        }
+                    }
+
+                    MediaPlayer.Event.Stopped -> {
+                        if (stopEventsToIgnore.get() > 0) {
+                            stopEventsToIgnore.decrementAndGet()
+                            return@launch
+                        }
+                        if (currentRequest != null && !userStopped) {
+                            handleAutoRestart("Playback stopped")
+                        } else {
+                            isIdle = true
+                            updateForegroundPlayback(false)
+                        }
+                    }
+
+                    MediaPlayer.Event.LengthChanged,
+                    MediaPlayer.Event.TimeChanged,
+                    MediaPlayer.Event.PositionChanged -> updateProgress()
                 }
             }
-
-            override fun onRenderedFirstFrame() {
-                _uiState.update { it.copy(firstFrameRendered = true, isBuffering = false) }
-                // Reset retry count when first frame is rendered
-                retryCount = 0
-            }
-
-            override fun onTracksChanged(tracks: Tracks) {
-                captureTrackInfo(tracks)
-            }
-        })
+        }
 
         startProgressUpdates()
     }
-    
+
     private fun scheduleRetry() {
         retryJob?.cancel()
+        val requestSnapshot = currentRequest
         retryJob = scope.launch {
             delay(retryDelayMs)
-            currentRequest?.let { request ->
-                Log.d(TAG, "Auto-retrying playback: ${request.url}")
-                playMedia(request.url, request.type, forcePrepare = true)
+            val request = currentRequest ?: return@launch
+            if (currentRequest !== requestSnapshot) return@launch
+            if (mediaPlayer.isPlaying) return@launch
+            Log.d(TAG, "Auto-retrying playback: ${request.url}")
+            playMedia(request.url, request.type, forcePrepare = true)
+        }
+    }
+
+    private fun scheduleVideoReattach(reason: String) {
+        val layoutSnapshot = currentVideoLayout ?: return
+        if (videoReattachAttempts >= 3) return
+        if (!layoutSnapshot.isAttachedToWindow) return
+
+        videoReattachAttempts++
+        videoReattachJob?.cancel()
+        videoReattachJob = scope.launch {
+            delay(150L * videoReattachAttempts)
+            if (currentVideoLayout !== layoutSnapshot) return@launch
+            if (!layoutSnapshot.isAttachedToWindow) return@launch
+            if (!mediaPlayer.isPlaying || currentRequest == null) return@launch
+            Log.w(TAG, "Reatachando video layout ($reason), intento $videoReattachAttempts/3")
+            runCatching { mediaPlayer.updateVideoSurfaces() }
+
+            // Evitar reiniciar el decoder en intentos tempranos: eso provoca pantalla negra hasta el siguiente keyframe.
+            // Si sigue sin vout tras varios intentos, como último recurso recreamos las views.
+            if (videoReattachAttempts >= 3) {
+                runCatching { mediaPlayer.detachViews() }
+                runCatching { mediaPlayer.attachViews(layoutSnapshot, null, false, true) }
+                runCatching { mediaPlayer.updateVideoSurfaces() }
             }
         }
     }
@@ -221,10 +213,11 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
             Log.w(TAG, "Auto-restart triggered ($reason). Retry $retryCount/$maxRetries")
             scheduleRetry()
         } else {
+            isIdle = true
             _uiState.update {
                 it.copy(
                     hasError = true,
-                    errorMessage = "Reproduccion detenida",
+                    errorMessage = "Reproducción detenida",
                     isPlaying = false,
                     isBuffering = false
                 )
@@ -244,44 +237,50 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     }
 
     private fun updateProgress() {
-        if (player.playbackState == Player.STATE_IDLE) return
-        val safeDuration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0 } ?: _uiState.value.durationMs
-        val safePosition = player.currentPosition.coerceAtLeast(0L)
+        if (isIdle) return
+        val safeDuration = safeDurationMs().takeIf { it > 0L } ?: _uiState.value.durationMs
+        val safePosition = safePositionMs()
+        val bufferedPosition = if (safeDuration > 0L) {
+            (safeDuration * (bufferingPercent / 100f))
+                .toLong()
+                .coerceAtLeast(safePosition)
+                .coerceAtMost(safeDuration)
+        } else {
+            _uiState.value.bufferedPositionMs
+        }
         _uiState.update {
             it.copy(
                 positionMs = safePosition,
                 durationMs = safeDuration,
-                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(safePosition).coerceAtMost(safeDuration)
+                bufferedPositionMs = bufferedPosition
             )
         }
     }
 
     fun playMedia(url: String, type: PlayerType = PlayerType.TV, forcePrepare: Boolean = false) {
         if (url.isBlank()) return
-        
-        // Cancel any pending retry when starting new playback
+
         retryJob?.cancel()
+        prepareJob?.cancel()
         userStopped = false
-        
+
         val lastRequest = currentRequest
         if (!forcePrepare && lastRequest?.url == url && lastRequest.type == type) {
-            if (player.playbackState == Player.STATE_IDLE) {
-                player.prepare()
+            if (!mediaPlayer.isPlaying) {
+                isIdle = false
+                scope.launch(Dispatchers.IO) { runCatching { mediaPlayer.play() } }
             }
-            player.playWhenReady = true
             _uiState.update { it.copy(playerType = type, streamUrl = url, hasError = false) }
             return
         }
 
-        // Reset retry count only when starting a completely new URL
         if (lastRequest?.url != url) {
             retryCount = 0
         }
-        
+
         currentRequest = PlaybackRequest(url, type)
-        player.setMediaItem(buildMediaItem(url, type))
-        player.prepare()
-        player.playWhenReady = true
+        isIdle = false
+        bufferingPercent = 0f
 
         _uiState.update {
             it.copy(
@@ -298,50 +297,69 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                 selectedSubtitleTrackId = null
             )
         }
+
+        val requestSnapshot = currentRequest
+        prepareJob = scope.launch(Dispatchers.IO) {
+            runCatching {
+                if (currentRequest !== requestSnapshot) return@launch
+                stopEventsToIgnore.incrementAndGet()
+                runCatching { mediaPlayer.stop() }
+                    .onFailure { stopEventsToIgnore.decrementAndGet() }
+                setMedia(url, type)
+                if (currentRequest !== requestSnapshot) return@launch
+                mediaPlayer.play()
+            }.onFailure { throwable ->
+                Log.e(TAG, "Error al preparar reproducción", throwable)
+                withContext(Dispatchers.Main.immediate) {
+                    handlePlaybackError("No se pudo iniciar la reproducción")
+                }
+            }
+        }
     }
 
-    private fun buildMediaItem(url: String, type: PlayerType): MediaItem {
-        val builder = MediaItem.Builder().setUri(url)
-        if (type == PlayerType.TV) {
-            builder
-                .setLiveConfiguration(
-                    MediaItem.LiveConfiguration.Builder()
-                        .setTargetOffsetMs(9_000)
-                        .setMinPlaybackSpeed(0.97f)
-                        .setMaxPlaybackSpeed(1.03f)
-                        .build()
-                )
+    private fun setMedia(url: String, type: PlayerType) {
+        val media = Media(libVlc, Uri.parse(url)).apply {
+            val userAgent = "PlayXY/VLC"
+            addOption(":http-user-agent=$userAgent")
+            addOption(":user-agent=$userAgent")
+            addOption(":http-reconnect=true")
+            addOption(":network-caching=${if (type == PlayerType.TV) 3000 else 4500}")
+            addOption(":live-caching=${if (type == PlayerType.TV) 2500 else 4500}")
+            addOption(":clock-jitter=0")
+            addOption(":clock-synchro=0")
         }
-        return builder.build()
+        mediaPlayer.media = media
+        media.release()
     }
 
     fun play() {
         userStopped = false
-        if (player.playbackState == Player.STATE_IDLE && currentRequest != null) {
-            player.prepare()
+        if (currentRequest != null && !mediaPlayer.isPlaying) {
+            isIdle = false
+            mediaPlayer.play()
         }
-        player.playWhenReady = true
     }
 
     fun pause() {
         userStopped = true
-        player.playWhenReady = false
+        if (mediaPlayer.isPlaying) {
+            mediaPlayer.pause()
+        }
     }
 
     fun stopPlayback() {
-        // Cancel any pending retry
         retryJob?.cancel()
+        prepareJob?.cancel()
         retryCount = 0
         userStopped = true
-        
-        player.stop()
-        player.clearMediaItems()
+
+        runCatching { mediaPlayer.stop() }
+        runCatching { mediaPlayer.media = null }
+        runCatching { mediaPlayer.detachViews() }
         currentRequest = null
+        isIdle = true
         trackLookup = emptyMap()
-        currentPlayerView?.let {
-            PlayerView.switchTargetView(player, it, null)
-            currentPlayerView = null
-        }
+        currentVideoLayout = null
         _uiState.value = PlaybackUiState()
         updateForegroundPlayback(false)
         nextAction = null
@@ -349,60 +367,78 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     }
 
     fun seekTo(positionMs: Long) {
-        player.seekTo(positionMs.coerceAtLeast(0L))
+        mediaPlayer.time = positionMs.coerceAtLeast(0L)
         updateProgress()
     }
 
     fun seekForward(incrementMs: Long = 10_000L) {
-        seekTo(player.currentPosition + incrementMs)
+        seekTo(safePositionMs() + incrementMs)
     }
 
     fun seekBackward(decrementMs: Long = 10_000L) {
-        seekTo(player.currentPosition - decrementMs)
+        seekTo(safePositionMs() - decrementMs)
     }
 
-    fun getCurrentPosition(): Long = player.currentPosition.coerceAtLeast(0L)
+    fun getCurrentPosition(): Long = safePositionMs()
 
-    fun getDuration(): Long = player.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+    fun getDuration(): Long = safeDurationMs()
 
-    fun isPlaying(): Boolean = player.isPlaying
+    fun isPlaying(): Boolean = mediaPlayer.isPlaying
 
-    fun hasActivePlayback(): Boolean {
-        val state = _uiState.value
-        return state.streamUrl != null && player.playbackState != Player.STATE_IDLE
-    }
+    fun hasActivePlayback(): Boolean = currentRequest != null && !isIdle
 
     fun setTransportActions(onNext: (() -> Unit)?, onPrevious: (() -> Unit)?) {
         nextAction = onNext
         previousAction = onPrevious
     }
 
-    fun getPlayer(): Player = player
-
-    fun attachPlayerView(view: PlayerView) {
-        if (currentPlayerView === view) return
-        PlayerView.switchTargetView(player, currentPlayerView, view)
-        currentPlayerView = view
+    fun attachVideoLayout(layout: VLCVideoLayout) {
+        detachViewsJob?.cancel()
+        if (currentVideoLayout === layout) {
+            runCatching { mediaPlayer.updateVideoSurfaces() }
+            return
+        }
+        runCatching { mediaPlayer.detachViews() }
+        currentVideoLayout = layout
+        videoReattachJob?.cancel()
+        videoReattachAttempts = 0
+        mediaPlayer.attachViews(layout, null, false, true)
+        runCatching { mediaPlayer.updateVideoSurfaces() }
     }
 
-    fun detachPlayerView(view: PlayerView) {
-        if (currentPlayerView === view) {
-            PlayerView.switchTargetView(player, currentPlayerView, null)
-            currentPlayerView = null
+    fun refreshVideoSurfaces() {
+        runCatching { mediaPlayer.updateVideoSurfaces() }
+    }
+
+    fun detachVideoLayout(layout: VLCVideoLayout) {
+        if (currentVideoLayout === layout) {
+            detachViewsJob?.cancel()
+            val layoutSnapshot = layout
+            detachViewsJob = scope.launch {
+                delay(detachViewsDelayMs)
+                if (currentVideoLayout !== layoutSnapshot) return@launch
+                if (layoutSnapshot.isAttachedToWindow) return@launch
+                runCatching { mediaPlayer.detachViews() }
+                currentVideoLayout = null
+            }
         }
     }
 
     fun release() {
         progressJob?.cancel()
         retryJob?.cancel()
-        currentPlayerView?.let { PlayerView.switchTargetView(player, it, null) }
-        currentPlayerView = null
-        player.release()
+        prepareJob?.cancel()
+        videoReattachJob?.cancel()
+        detachViewsJob?.cancel()
+        runCatching { mediaPlayer.detachViews() }
+        currentVideoLayout = null
+        runCatching { mediaPlayer.stop() }
+        runCatching { mediaPlayer.release() }
+        runCatching { libVlc.release() }
         scope.cancel()
         updateForegroundPlayback(false)
         nextAction = null
         previousAction = null
-        mediaSession.release()
     }
 
     private fun updateForegroundPlayback(isPlaying: Boolean) {
@@ -421,8 +457,9 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     fun selectAudioTrack(optionId: String) {
         val option = trackLookup[optionId] ?: return
-        if (option.trackType != C.TRACK_TYPE_AUDIO) return
-        applyTrackOverride(option)
+        if (option.trackType != TrackTypes.AUDIO) return
+        mediaPlayer.audioTrack = option.trackIndex
+        updateTracksFromPlayer()
     }
 
     fun selectSubtitleTrack(optionId: String?) {
@@ -431,96 +468,76 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
             return
         }
         val option = trackLookup[optionId] ?: return
-        if (option.trackType != C.TRACK_TYPE_TEXT) return
-        applyTrackOverride(option)
+        if (option.trackType != TrackTypes.TEXT) return
+        mediaPlayer.spuTrack = option.trackIndex
+        updateTracksFromPlayer()
     }
 
     fun disableSubtitles() {
-        val builder = trackSelector.parameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-        trackSelector.parameters = builder.build()
-        captureTrackInfo(player.currentTracks)
+        mediaPlayer.spuTrack = -1
+        updateTracksFromPlayer()
     }
 
-    private fun applyTrackOverride(option: TrackOption) {
-        val tracks = player.currentTracks
-        if (option.groupIndex < 0 || option.trackIndex < 0) return
-        val group = tracks.groups.getOrNull(option.groupIndex) ?: return
-        val override = TrackSelectionOverride(group.mediaTrackGroup, listOf(option.trackIndex))
-        val builder = trackSelector.parameters.buildUpon()
-            .setTrackTypeDisabled(option.trackType, false)
-            .clearOverridesOfType(option.trackType)
-            .addOverride(override)
-        trackSelector.parameters = builder.build()
-        captureTrackInfo(tracks)
-    }
+    private data class PlaybackRequest(val url: String, val type: PlayerType)
 
-    private fun captureTrackInfo(tracks: Tracks) {
-        val audioTracks = mutableListOf<TrackOption>()
-        val textTracks = mutableListOf<TrackOption>()
+    private fun safePositionMs(): Long = mediaPlayer.time.coerceAtLeast(0L)
 
-        tracks.groups.forEachIndexed { groupIndex, group ->
-            when (group.type) {
-                C.TRACK_TYPE_AUDIO -> {
-                    for (trackIndex in 0 until group.length) {
-                        val format = group.getTrackFormat(trackIndex)
-                        audioTracks.add(
-                            TrackOption(
-                                id = "audio-$groupIndex-$trackIndex",
-                                label = format.label ?: format.language ?: "Audio ${audioTracks.size + 1}",
-                                language = format.language,
-                                trackType = C.TRACK_TYPE_AUDIO,
-                                groupIndex = groupIndex,
-                                trackIndex = trackIndex,
-                                selected = group.isTrackSelected(trackIndex)
-                            )
-                        )
-                    }
-                }
+    private fun safeDurationMs(): Long = mediaPlayer.length.coerceAtLeast(0L)
 
-                C.TRACK_TYPE_TEXT -> {
-                    for (trackIndex in 0 until group.length) {
-                        val format = group.getTrackFormat(trackIndex)
-                        textTracks.add(
-                            TrackOption(
-                                id = "text-$groupIndex-$trackIndex",
-                                label = format.label ?: format.language ?: "Subtítulo ${textTracks.size + 1}",
-                                language = format.language,
-                                trackType = C.TRACK_TYPE_TEXT,
-                                groupIndex = groupIndex,
-                                trackIndex = trackIndex,
-                                selected = group.isTrackSelected(trackIndex)
-                            )
-                        )
-                    }
-                }
+    private fun updateTracksFromPlayer() {
+        val audioTracks = mediaPlayer.audioTracks
+            ?.filter { it.id >= 0 }
+            ?.mapIndexed { index, desc ->
+                TrackOption(
+                    id = "audio-${desc.id}",
+                    label = desc.name?.takeIf { it.isNotBlank() } ?: "Audio ${index + 1}",
+                    language = null,
+                    trackType = TrackTypes.AUDIO,
+                    groupIndex = 0,
+                    trackIndex = desc.id,
+                    selected = desc.id == mediaPlayer.audioTrack
+                )
             }
-        }
+            .orEmpty()
 
-        if (textTracks.isNotEmpty()) {
-            val disableSelected = trackSelector.parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
-            textTracks.add(
-                0,
+        val rawText = mediaPlayer.spuTracks
+            ?.filter { it.id >= 0 }
+            ?.mapIndexed { index, desc ->
+                TrackOption(
+                    id = "text-${desc.id}",
+                    label = desc.name?.takeIf { it.isNotBlank() } ?: "Subtítulo ${index + 1}",
+                    language = null,
+                    trackType = TrackTypes.TEXT,
+                    groupIndex = 0,
+                    trackIndex = desc.id,
+                    selected = desc.id == mediaPlayer.spuTrack
+                )
+            }
+            .orEmpty()
+
+        val textTracks = if (rawText.isNotEmpty()) {
+            listOf(
                 TrackOption(
                     id = TrackOption.SUBTITLE_OFF_ID,
                     label = "Subtítulos desactivados",
                     language = null,
-                    trackType = C.TRACK_TYPE_TEXT,
+                    trackType = TrackTypes.TEXT,
                     groupIndex = -1,
                     trackIndex = -1,
-                    selected = disableSelected,
+                    selected = mediaPlayer.spuTrack == -1,
                     isDisableOption = true
                 )
-            )
+            ) + rawText
+        } else {
+            emptyList()
         }
 
         trackLookup = (audioTracks + textTracks.filter { !it.isDisableOption }).associateBy { it.id }
 
         val selectedAudio = audioTracks.firstOrNull { it.selected }?.id
         val selectedText = when {
-            trackSelector.parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) -> TrackOption.SUBTITLE_OFF_ID
-            else -> textTracks.firstOrNull { it.selected && !it.isDisableOption }?.id
+            rawText.isNotEmpty() && mediaPlayer.spuTrack == -1 -> TrackOption.SUBTITLE_OFF_ID
+            else -> rawText.firstOrNull { it.selected }?.id
         }
 
         _uiState.update {
@@ -532,7 +549,28 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
-    private data class PlaybackRequest(val url: String, val type: PlayerType)
-
-    private fun <T> List<T>.getOrNull(index: Int): T? = if (index in indices) this[index] else null
+    private fun handlePlaybackError(message: String) {
+        if (retryCount < maxRetries && currentRequest != null) {
+            retryCount++
+            _uiState.update {
+                it.copy(
+                    isBuffering = true,
+                    hasError = false,
+                    errorMessage = "Reintentando... ($retryCount/$maxRetries)"
+                )
+            }
+            scheduleRetry()
+        } else {
+            isIdle = true
+            _uiState.update {
+                it.copy(
+                    hasError = true,
+                    errorMessage = message,
+                    isPlaying = false,
+                    isBuffering = false
+                )
+            }
+            updateForegroundPlayback(false)
+        }
+    }
 }

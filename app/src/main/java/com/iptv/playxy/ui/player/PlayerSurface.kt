@@ -8,37 +8,53 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.LayoutInflater
+import android.view.View
 import com.iptv.playxy.R
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
+import org.videolan.libvlc.util.VLCVideoLayout
 
 @Composable
 fun PlayerSurface(
     playerManager: PlayerManager,
     modifier: Modifier = Modifier,
-    resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+    resizeMode: Int = ResizeMode.FIT,
     keepScreenOn: Boolean = true
 ) {
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            (LayoutInflater.from(context).inflate(R.layout.player_compose_view, null, false) as PlayerView).apply {
-                this.player = playerManager.getPlayer()
-                this.resizeMode = resizeMode
-                // Evitamos indicador nativo para no duplicar con el de Compose.
-                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                setKeepContentOnPlayerReset(true)
+            (LayoutInflater.from(context).inflate(R.layout.player_compose_view, null, false) as VLCVideoLayout).apply {
                 this.keepScreenOn = keepScreenOn
-            }.also { view ->
-                playerManager.attachPlayerView(view)
+                addOnAttachStateChangeListener(
+                    object : View.OnAttachStateChangeListener {
+                        override fun onViewAttachedToWindow(view: View) {
+                            playerManager.attachVideoLayout(this@apply)
+                        }
+
+                        override fun onViewDetachedFromWindow(view: View) {
+                            playerManager.detachVideoLayout(this@apply)
+                        }
+                    }
+                )
             }
         },
-        update = { view ->
-            playerManager.attachPlayerView(view)
-            view.resizeMode = resizeMode
-            view.keepScreenOn = keepScreenOn
-        }
+        update = { layout ->
+            ResizeMode.apply(playerManager, resizeMode)
+            layout.keepScreenOn = keepScreenOn
+        },
+        onRelease = { layout -> playerManager.detachVideoLayout(layout) }
     )
+}
+
+object ResizeMode {
+    const val FIT = 0
+    const val FILL = 1
+
+    fun apply(playerManager: PlayerManager, resizeMode: Int) {
+        // LibVLC no expone un equivalente directo al resizeMode de Media3 en este wrapper.
+        // Dejamos la opción para compatibilidad con llamadas existentes.
+        @Suppress("UNUSED_PARAMETER")
+        val ignored = playerManager to resizeMode
+    }
 }
 
 fun Modifier.noRippleClickable(

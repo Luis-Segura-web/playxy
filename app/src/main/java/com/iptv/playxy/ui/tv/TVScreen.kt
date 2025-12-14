@@ -1,6 +1,8 @@
 
 package com.iptv.playxy.ui.tv
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,12 +29,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.iptv.playxy.domain.LiveStream
 import com.iptv.playxy.ui.LocalFullscreenState
+import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.components.CategoryBar
 import com.iptv.playxy.ui.main.SortOrder
-import com.iptv.playxy.ui.player.FullscreenPlayer
+import com.iptv.playxy.ui.player.FullscreenOverlay
+import com.iptv.playxy.ui.player.ImmersiveMode
+import com.iptv.playxy.ui.player.LocalPlayerContainerHost
+import com.iptv.playxy.ui.player.PlayerContainerConfig
 import com.iptv.playxy.ui.player.PlayerType
-import com.iptv.playxy.ui.player.TVMiniPlayer
+import com.iptv.playxy.ui.player.TVMiniOverlay
+import com.iptv.playxy.ui.player.TrackSelectionDialog
 import com.iptv.playxy.ui.tv.components.ChannelListView
 import com.iptv.playxy.util.StreamUrlBuilder
 import kotlinx.coroutines.launch
@@ -54,6 +61,8 @@ fun TVScreen(
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     val fullscreenState = LocalFullscreenState.current
     val isFullscreen = fullscreenState.value
+    val pipController = LocalPipController.current
+    val playerContainer = LocalPlayerContainerHost.current
     
     // Navegación de canales
     val hasPrevious = viewModel.hasPreviousChannel()
@@ -72,6 +81,7 @@ fun TVScreen(
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
     var pendingChannel by remember { mutableStateOf<LiveStream?>(null) }
+    var showTrackDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(playbackState.streamUrl) {
@@ -136,7 +146,22 @@ fun TVScreen(
         )
     }
 
-    if (isFullscreen && currentChannel != null && userProfile != null) {
+    val hasChannelContext = currentChannel != null && userProfile != null
+    val streamUrl = if (hasChannelContext) {
+        StreamUrlBuilder.buildLiveStreamUrl(userProfile!!, currentChannel!!)
+    } else {
+        null
+    }
+
+    val stopAndClose: () -> Unit = {
+        isChannelSwitching = false
+        playerManager.stopPlayback()
+        fullscreenState.value = false
+    }
+
+    if (isFullscreen && hasChannelContext) {
+        BackHandler { fullscreenState.value = false }
+        ImmersiveMode()
         DisposableEffect(currentChannel!!.streamId) {
             playerManager.setTransportActions(
                 onNext = {
@@ -150,39 +175,94 @@ fun TVScreen(
             )
             onDispose { playerManager.setTransportActions(null, null) }
         }
-        FullscreenPlayer(
-            streamUrl = StreamUrlBuilder.buildLiveStreamUrl(userProfile!!, currentChannel!!),
-            title = currentChannel!!.name,
-            playerType = PlayerType.TV,
-            playerManager = playerManager,
-            onBack = { fullscreenState.value = false },
-            onPreviousItem = { viewModel.playPreviousChannel() },
-            onNextItem = { viewModel.playNextChannel() },
-            hasPrevious = hasPrevious,
-            hasNext = hasNext
-        )
-    } else {
-        Column(modifier = Modifier.fillMaxSize()) {
-            val shouldShowMiniPlayer = currentChannel != null && userProfile != null &&
-                (playbackState.streamUrl != null || isChannelSwitching)
-            if (shouldShowMiniPlayer) {
-                TVMiniPlayer(
-                    streamUrl = StreamUrlBuilder.buildLiveStreamUrl(userProfile!!, currentChannel!!),
-                    channelName = currentChannel!!.name,
-                    playerManager = playerManager,
-                    onPreviousChannel = { viewModel.playPreviousChannel() },
-                    onNextChannel = { viewModel.playNextChannel() },
-                    hasPrevious = hasPrevious,
-                    hasNext = hasNext,
-                    onClose = {
-                        isChannelSwitching = false
-                        playerManager.stopPlayback()
-                        fullscreenState.value = false
-                    },
-                    onFullscreen = { fullscreenState.value = true }
-                )
-            }
+    }
 
+    val shouldShowPlayer =
+        hasChannelContext && (isFullscreen || playbackState.streamUrl != null || isChannelSwitching)
+
+    if (shouldShowPlayer && streamUrl != null) {
+        LaunchedEffect(streamUrl) {
+            if (playbackState.streamUrl != streamUrl) {
+                playerManager.playMedia(streamUrl, PlayerType.TV)
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (shouldShowPlayer && streamUrl != null) {
+            playerContainer(
+                PlayerContainerConfig(
+                    state = playbackState,
+                    modifier = if (isFullscreen) {
+                        Modifier.fillMaxSize()
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                    },
+                    controlsLocked = showTrackDialog,
+                    overlay = { state, _, setControlsVisible ->
+                        if (isFullscreen) {
+                            FullscreenOverlay(
+                                state = state,
+                                title = currentChannel!!.name,
+                                playerType = PlayerType.TV,
+                                hasTrackOptions = state.tracks.hasDialogOptions,
+                                hasProgress = false,
+                                hasPrevious = hasPrevious,
+                                hasNext = hasNext,
+                                onBack = {
+                                    fullscreenState.value = false
+                                    setControlsVisible(true)
+                                },
+                                onShowTracks = {
+                                    setControlsVisible(true)
+                                    showTrackDialog = true
+                                },
+                                onTogglePlay = {
+                                    if (state.isPlaying) playerManager.pause() else playerManager.play()
+                                },
+                                onSeekBack = { playerManager.seekBackward() },
+                                onSeekForward = { playerManager.seekForward() },
+                                onRetry = { playerManager.playMedia(streamUrl, PlayerType.TV, forcePrepare = true) },
+                                onSeek = { position -> playerManager.seekTo(position) },
+                                onPrevious = { viewModel.playPreviousChannel() },
+                                onNext = { viewModel.playNextChannel() },
+                                enablePrevious = hasPrevious,
+                                enableNext = hasNext,
+                                onPip = { pipController.requestPip(onClose = stopAndClose) }
+                            )
+                        } else {
+                            TVMiniOverlay(
+                                state = state,
+                                channelName = currentChannel!!.name,
+                                hasTrackOptions = state.tracks.hasDialogOptions,
+                                hasPrevious = hasPrevious,
+                                hasNext = hasNext,
+                                onClose = {
+                                    stopAndClose()
+                                    setControlsVisible(true)
+                                },
+                                onReplay = { playerManager.playMedia(streamUrl, PlayerType.TV, forcePrepare = true) },
+                                onTogglePlay = {
+                                    if (state.isPlaying) playerManager.pause() else playerManager.play()
+                                },
+                                onPrevious = { viewModel.playPreviousChannel() },
+                                onNext = { viewModel.playNextChannel() },
+                                onShowTracks = {
+                                    setControlsVisible(true)
+                                    showTrackDialog = true
+                                },
+                                onFullscreen = { fullscreenState.value = true },
+                                onPip = { pipController.requestPip(onClose = stopAndClose) }
+                            )
+                        }
+                    }
+                )
+            )
+        }
+
+        if (!isFullscreen) {
             CategoryBar(
                 categories = categories.categories,
                 selectedCategoryId = categories.selectedCategory?.categoryId,
@@ -217,6 +297,17 @@ fun TVScreen(
                 modifier = Modifier.weight(1f)
             )
         }
+    }
+
+    if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
+        TrackSelectionDialog(
+            tracks = playbackState.tracks,
+            onDismiss = { showTrackDialog = false },
+            onAudioSelected = { option -> playerManager.selectAudioTrack(option.id) },
+            onSubtitleSelected = { option ->
+                if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
+            }
+        )
     }
 }
 

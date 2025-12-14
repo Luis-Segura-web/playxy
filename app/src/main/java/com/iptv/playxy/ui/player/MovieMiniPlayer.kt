@@ -110,7 +110,7 @@ fun MovieMiniPlayer(
 }
 
 @Composable
-private fun MovieMiniPlayerOverlay(
+internal fun MovieMiniPlayerOverlay(
     title: String,
     state: PlaybackUiState,
     onClose: () -> Unit,

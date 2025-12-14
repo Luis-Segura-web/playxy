@@ -1,5 +1,6 @@
 package com.iptv.playxy.ui.movies
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -77,10 +78,13 @@ import com.iptv.playxy.ui.LocalFullscreenState
 import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.components.DetailLoadingScreen
-import com.iptv.playxy.ui.player.FullscreenPlayer
-import com.iptv.playxy.ui.player.MovieMiniPlayer
-import com.iptv.playxy.ui.player.PlayerSurface
+import com.iptv.playxy.ui.player.FullscreenOverlay
+import com.iptv.playxy.ui.player.ImmersiveMode
+import com.iptv.playxy.ui.player.LocalPlayerContainerHost
+import com.iptv.playxy.ui.player.MovieMiniPlayerOverlay
+import com.iptv.playxy.ui.player.PlayerContainerConfig
 import com.iptv.playxy.ui.player.PlayerType
+import com.iptv.playxy.ui.player.TrackSelectionDialog
 import com.iptv.playxy.util.StreamUrlBuilder
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -142,6 +146,7 @@ fun MovieDetailScreen(
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     val pipController = LocalPipController.current
     val isInPip by pipController.isInPip.collectAsStateWithLifecycle()
+    val playerContainer = LocalPlayerContainerHost.current
 
     val shouldShowHeaderPlayer = isPlaying && userProfile != null
     val movieInfo = uiState.selectedMovieInfo
@@ -321,16 +326,28 @@ fun MovieDetailScreen(
         DetailLoadingScreen(
             onBackClick = onBackClick
         )
-    } else if (isFullscreen && userProfile != null && currentStreamUrl != null) {
-        FullscreenPlayer(
-            streamUrl = currentStreamUrl,
-            title = displayTitle,
-            playerType = PlayerType.MOVIE,
-            playerManager = playerManager,
-            onBack = { fullscreenState.value = false }
-        )
     } else {
         var synopsisExpanded by remember { mutableStateOf(false) }
+        var showTrackDialog by remember { mutableStateOf(false) }
+
+        val stopAndClose: () -> Unit = {
+            playerManager.stopPlayback()
+            isPlaying = false
+            fullscreenState.value = false
+        }
+
+        if (isFullscreen && shouldShowHeaderPlayer) {
+            BackHandler { fullscreenState.value = false }
+            ImmersiveMode()
+        }
+
+        if (shouldShowHeaderPlayer && currentStreamUrl != null) {
+            LaunchedEffect(currentStreamUrl) {
+                if (playbackState.streamUrl != currentStreamUrl) {
+                    playerManager.playMedia(currentStreamUrl, PlayerType.MOVIE)
+                }
+            }
+        }
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -347,28 +364,90 @@ fun MovieDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .verticalScroll(rememberScrollState())
-            ) {
+                    .then(
+                        if (!(isFullscreen && shouldShowHeaderPlayer)) {
+                            Modifier.verticalScroll(rememberScrollState())
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) column@{
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .background(MaterialTheme.colorScheme.surface)
+                    modifier =
+                        if (isFullscreen && shouldShowHeaderPlayer) {
+                            Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surface)
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .background(MaterialTheme.colorScheme.surface)
+                        }
                 ) {
                     if (shouldShowHeaderPlayer && currentStreamUrl != null) {
-                        MovieMiniPlayer(
-                            streamUrl = currentStreamUrl,
-                            movieTitle = displayTitle,
-                            playerManager = playerManager,
-                            onClose = {
-                                playerManager.stopPlayback()
-                                isPlaying = false
-                                fullscreenState.value = false
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                            onFullscreen = {
-                                fullscreenState.value = true
-                            }
+                        playerContainer(
+                            PlayerContainerConfig(
+                                state = playbackState,
+                                modifier = Modifier.fillMaxSize(),
+                                controlsLocked = showTrackDialog,
+                                overlay = { state, _, setControlsVisible ->
+                                    if (isFullscreen) {
+                                        FullscreenOverlay(
+                                            state = state,
+                                            title = displayTitle,
+                                            playerType = PlayerType.MOVIE,
+                                            hasTrackOptions = state.tracks.hasDialogOptions,
+                                            hasProgress = true,
+                                            hasPrevious = false,
+                                            hasNext = false,
+                                            onBack = {
+                                                fullscreenState.value = false
+                                                setControlsVisible(true)
+                                            },
+                                            onShowTracks = {
+                                                setControlsVisible(true)
+                                                showTrackDialog = true
+                                            },
+                                            onTogglePlay = {
+                                                if (state.isPlaying) playerManager.pause() else playerManager.play()
+                                            },
+                                            onSeekBack = { playerManager.seekBackward() },
+                                            onSeekForward = { playerManager.seekForward() },
+                                            onRetry = { playerManager.playMedia(currentStreamUrl, PlayerType.MOVIE, forcePrepare = true) },
+                                            onSeek = { position -> playerManager.seekTo(position) },
+                                            onPrevious = null,
+                                            onNext = null,
+                                            enablePrevious = false,
+                                            enableNext = false,
+                                            onPip = { pipController.requestPip(onClose = stopAndClose) }
+                                        )
+                                    } else {
+                                        MovieMiniPlayerOverlay(
+                                            title = displayTitle,
+                                            state = state,
+                                            onClose = {
+                                                stopAndClose()
+                                                setControlsVisible(true)
+                                            },
+                                            onReplay = { playerManager.playMedia(currentStreamUrl, PlayerType.MOVIE, forcePrepare = true) },
+                                            onSeekBack = { playerManager.seekBackward() },
+                                            onSeekForward = { playerManager.seekForward() },
+                                            onTogglePlay = {
+                                                if (state.isPlaying) playerManager.pause() else playerManager.play()
+                                            },
+                                            onFullscreen = { fullscreenState.value = true },
+                                            onShowTracks = {
+                                                setControlsVisible(true)
+                                                showTrackDialog = true
+                                            },
+                                            onSeek = { position -> playerManager.seekTo(position) },
+                                            hasTrackOptions = state.tracks.hasDialogOptions,
+                                            onPip = { pipController.requestPip(onClose = stopAndClose) }
+                                        )
+                                    }
+                                }
+                            )
                         )
                     } else {
                         AsyncImage(
@@ -432,6 +511,10 @@ fun MovieDetailScreen(
                             }
                         }
                     }
+                }
+
+                if (isFullscreen && shouldShowHeaderPlayer) {
+                    return@column
                 }
 
                 Column(
@@ -783,6 +866,17 @@ fun MovieDetailScreen(
                     }
                 }
             }
+        }
+
+        if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
+            TrackSelectionDialog(
+                tracks = playbackState.tracks,
+                onDismiss = { showTrackDialog = false },
+                onAudioSelected = { option -> playerManager.selectAudioTrack(option.id) },
+                onSubtitleSelected = { option ->
+                    if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
+                }
+            )
         }
     }
 
