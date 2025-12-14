@@ -1,6 +1,7 @@
 package com.iptv.playxy.ui.player
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -18,15 +19,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay10
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.StayCurrentLandscape
+import androidx.compose.material.icons.filled.StayCurrentPortrait
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,9 +44,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +77,9 @@ fun FullscreenPlayer(
 ) {
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
+    var trackDialogTab by remember { mutableStateOf<TrackSelectionTab?>(null) }
+    var showFitDialog by remember { mutableStateOf(false) }
+    var orientationMode by rememberSaveable { mutableStateOf(FullscreenOrientationMode.Auto) }
     val playerContainer = LocalPlayerContainerHost.current
     val pipController = LocalPipController.current
 
@@ -77,29 +91,43 @@ fun FullscreenPlayer(
         }
     }
 
-    ImmersiveMode()
+    ImmersiveMode(enabled = true, orientationMode = orientationMode)
 
     playerContainer(
         PlayerContainerConfig(
             state = playbackState,
             modifier = modifier.fillMaxSize(),
-            controlsLocked = showTrackDialog,
+            controlsLocked = showTrackDialog || showFitDialog,
             overlay = { state, _, setControlsVisible ->
                 FullscreenOverlay(
                     state = state,
                     title = title,
                     playerType = playerType,
-                    hasTrackOptions = state.tracks.hasDialogOptions,
                     hasProgress = playerType != PlayerType.TV,
                     hasPrevious = hasPrevious,
                     hasNext = hasNext,
+                    orientationMode = orientationMode,
                     onBack = {
                         onBack()
                         setControlsVisible(true)
                     },
-                    onShowTracks = {
+                    onShowAudioTracks = {
                         setControlsVisible(true)
+                        trackDialogTab = TrackSelectionTab.Audio
                         showTrackDialog = true
+                    },
+                    onShowSubtitleTracks = {
+                        setControlsVisible(true)
+                        trackDialogTab = TrackSelectionTab.Subtitles
+                        showTrackDialog = true
+                    },
+                    onShowFit = {
+                        setControlsVisible(true)
+                        showFitDialog = true
+                    },
+                    onOrientationModeChange = { newMode ->
+                        setControlsVisible(true)
+                        orientationMode = newMode
                     },
                     onTogglePlay = {
                         if (state.isPlaying) playerManager.pause() else playerManager.play()
@@ -121,11 +149,24 @@ fun FullscreenPlayer(
     if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
         TrackSelectionDialog(
             tracks = playbackState.tracks,
-            onDismiss = { showTrackDialog = false },
+            onDismiss = {
+                showTrackDialog = false
+                trackDialogTab = null
+            },
             onAudioSelected = { option -> playerManager.selectAudioTrack(option.id) },
             onSubtitleSelected = { option ->
                 if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
-            }
+            },
+            initialTab = trackDialogTab
+        )
+    }
+
+    if (showFitDialog) {
+        VideoFitDialog(
+            selectedScale = playerManager.getVideoScaleType(),
+            onDismiss = { showFitDialog = false },
+            onScaleSelected = { scaleType -> playerManager.setVideoScaleType(scaleType) },
+            immersive = true
         )
     }
 }
@@ -135,12 +176,15 @@ internal fun FullscreenOverlay(
     state: PlaybackUiState,
     title: String,
     playerType: PlayerType,
-    hasTrackOptions: Boolean,
     hasProgress: Boolean,
     hasPrevious: Boolean,
     hasNext: Boolean,
+    orientationMode: FullscreenOrientationMode,
     onBack: () -> Unit,
-    onShowTracks: () -> Unit,
+    onShowAudioTracks: () -> Unit,
+    onShowSubtitleTracks: () -> Unit,
+    onShowFit: () -> Unit,
+    onOrientationModeChange: (FullscreenOrientationMode) -> Unit,
     onTogglePlay: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
@@ -153,6 +197,8 @@ internal fun FullscreenOverlay(
     onPip: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
+        var orientationMenuExpanded by remember { mutableStateOf(false) }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -186,6 +232,84 @@ internal fun FullscreenOverlay(
                     )
                 }
                 Row {
+                    val showAudio = state.tracks.audio.size > 1
+                    val showSubtitles = state.tracks.text.size > 1
+                    if (showAudio) {
+                        IconButton(onClick = onShowAudioTracks) {
+                            Icon(imageVector = Icons.Default.Audiotrack, contentDescription = "Audio", tint = Color.White)
+                        }
+                    }
+                    if (showSubtitles) {
+                        IconButton(onClick = onShowSubtitleTracks) {
+                            Icon(
+                                imageVector = Icons.Default.ClosedCaption,
+                                contentDescription = "Subtítulos",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    IconButton(onClick = onShowFit) {
+                        Icon(
+                            imageVector = Icons.Default.AspectRatio,
+                            contentDescription = "Ajuste de pantalla",
+                            tint = Color.White
+                        )
+                    }
+                    Box {
+                        val orientationIcon = when (orientationMode) {
+                            FullscreenOrientationMode.Horizontal -> Icons.Default.StayCurrentLandscape
+                            FullscreenOrientationMode.Vertical -> Icons.Default.StayCurrentPortrait
+                            FullscreenOrientationMode.Auto -> Icons.Default.ScreenRotation
+                        }
+                        IconButton(onClick = { orientationMenuExpanded = true }) {
+                            Icon(
+                                imageVector = orientationIcon,
+                                contentDescription = "Orientación",
+                                tint = Color.White
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = orientationMenuExpanded,
+                            onDismissRequest = { orientationMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Automático") },
+                                leadingIcon = {
+                                    if (orientationMode == FullscreenOrientationMode.Auto) {
+                                        Icon(imageVector = Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    orientationMenuExpanded = false
+                                    onOrientationModeChange(FullscreenOrientationMode.Auto)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Horizontal") },
+                                leadingIcon = {
+                                    if (orientationMode == FullscreenOrientationMode.Horizontal) {
+                                        Icon(imageVector = Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    orientationMenuExpanded = false
+                                    onOrientationModeChange(FullscreenOrientationMode.Horizontal)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Vertical") },
+                                leadingIcon = {
+                                    if (orientationMode == FullscreenOrientationMode.Vertical) {
+                                        Icon(imageVector = Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    orientationMenuExpanded = false
+                                    onOrientationModeChange(FullscreenOrientationMode.Vertical)
+                                }
+                            )
+                        }
+                    }
                     IconButton(onClick = onPip) {
                         Icon(
                             imageVector = Icons.Default.PictureInPicture,
@@ -193,134 +317,150 @@ internal fun FullscreenOverlay(
                             tint = Color.White
                         )
                     }
-                    if (hasTrackOptions) {
-                        IconButton(onClick = onShowTracks) {
-                            Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
-                        }
-                    }
                 }
+            }
+        }
+
+        if (state.hasError) {
+            Surface(
+                color = Color.Red.copy(alpha = 0.85f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 76.dp)
+            ) {
+                Text(
+                    text = "Error: ${state.errorMessage ?: "Sin código"}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
             }
         }
 
         Box(
             modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(),
-            contentAlignment = Alignment.Center
-        ) {
-            if (state.hasError) {
-                Surface(
-                    color = Color.Red.copy(alpha = 0.85f),
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .offset(y = (-64).dp)
-                ) {
-                    Text(
-                        text = "Error: ${state.errorMessage ?: "Sin código"}",
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                     )
-                }
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.align(Alignment.Center)
-            ) {
-                if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onPrevious != null) {
-                    IconButton(
-                        onClick = onPrevious,
-                        enabled = enablePrevious,
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                            .padding(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Anterior",
-                            tint = if (enablePrevious) Color.White else Color.Gray
-                        )
-                    }
-                }
-                if (playerType != PlayerType.TV) {
-                    IconButton(
-                        onClick = onSeekBack,
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                            .padding(6.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
-                    }
-                }
-                IconButton(
-                    onClick = { if (state.hasError) onRetry() else onTogglePlay() },
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                        .padding(6.dp)
-                ) {
-                    Icon(
-                        imageVector = if (state.hasError) Icons.Default.Refresh else if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.hasError) "Reintentar" else if (state.isPlaying) "Pausar" else "Reproducir",
-                        tint = Color.White
-                    )
-                }
-                if (playerType != PlayerType.TV) {
-                    IconButton(
-                        onClick = onSeekForward,
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                            .padding(6.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
-                    }
-                }
-                if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onNext != null) {
-                    IconButton(
-                        onClick = onNext,
-                        enabled = enableNext,
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                            .padding(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Siguiente",
-                            tint = if (enableNext) Color.White else Color.Gray
-                        )
-                    }
-                }
-            }
-        }
-
-        if (hasProgress) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
-                        )
-                    )
-                    .padding(horizontal = 24.dp, vertical = 18.dp)
-            ) {
-                PlaybackProgress(
-                    state = state,
-                    onSeek = onSeek,
-                    modifier = Modifier.fillMaxWidth()
                 )
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (hasProgress) {
+                    PlaybackProgress(
+                        state = state,
+                        onSeek = onSeek,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onPrevious != null) {
+                        IconButton(
+                            onClick = onPrevious,
+                            enabled = enablePrevious,
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                .padding(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipPrevious,
+                                contentDescription = "Anterior",
+                                tint = if (enablePrevious) Color.White else Color.Gray
+                            )
+                        }
+                    }
+                    if (playerType != PlayerType.TV) {
+                        IconButton(
+                            onClick = onSeekBack,
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                .padding(6.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
+                        }
+                    }
+                    IconButton(
+                        onClick = { if (state.hasError) onRetry() else onTogglePlay() },
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                            .padding(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (state.hasError) Icons.Default.Refresh else if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (state.hasError) "Reintentar" else if (state.isPlaying) "Pausar" else "Reproducir",
+                            tint = Color.White
+                        )
+                    }
+                    if (playerType != PlayerType.TV) {
+                        IconButton(
+                            onClick = onSeekForward,
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                .padding(6.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
+                        }
+                    }
+                    if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onNext != null) {
+                        IconButton(
+                            onClick = onNext,
+                            enabled = enableNext,
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                                .padding(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "Siguiente",
+                                tint = if (enableNext) Color.White else Color.Gray
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-internal fun ImmersiveMode() {
+internal fun ImmersiveMode(
+    enabled: Boolean,
+    orientationMode: FullscreenOrientationMode = FullscreenOrientationMode.Auto
+) {
     val activity = LocalContext.current as? Activity
-    DisposableEffect(Unit) {
+
+    SideEffect {
+        val desiredOrientation =
+            if (enabled) {
+                when (orientationMode) {
+                    FullscreenOrientationMode.Auto -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                    FullscreenOrientationMode.Horizontal -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    FullscreenOrientationMode.Vertical -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                }
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+
+        if (activity?.requestedOrientation != desiredOrientation) {
+            activity?.requestedOrientation = desiredOrientation
+        }
+    }
+
+    DisposableEffect(enabled) {
+        if (!enabled) return@DisposableEffect onDispose {}
+
         val window = activity?.window
         if (window != null) {
             val controller = WindowCompat.getInsetsController(window, window.decorView)
@@ -347,6 +487,7 @@ internal fun ImmersiveMode() {
                 @Suppress("DEPRECATION")
                 disposeWindow.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
             }
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 }

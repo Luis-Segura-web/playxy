@@ -19,6 +19,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -34,11 +35,13 @@ import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.components.CategoryBar
 import com.iptv.playxy.ui.main.SortOrder
 import com.iptv.playxy.ui.player.FullscreenOverlay
+import com.iptv.playxy.ui.player.FullscreenOrientationMode
 import com.iptv.playxy.ui.player.ImmersiveMode
 import com.iptv.playxy.ui.player.LocalPlayerContainerHost
 import com.iptv.playxy.ui.player.PlayerContainerConfig
 import com.iptv.playxy.ui.player.PlayerType
 import com.iptv.playxy.ui.player.TVMiniOverlay
+import com.iptv.playxy.ui.player.TrackSelectionTab
 import com.iptv.playxy.ui.player.TrackSelectionDialog
 import com.iptv.playxy.ui.tv.components.ChannelListView
 import com.iptv.playxy.util.StreamUrlBuilder
@@ -82,6 +85,9 @@ fun TVScreen(
     var pinError by remember { mutableStateOf<String?>(null) }
     var pendingChannel by remember { mutableStateOf<LiveStream?>(null) }
     var showTrackDialog by remember { mutableStateOf(false) }
+    var trackDialogTab by remember { mutableStateOf<TrackSelectionTab?>(null) }
+    var showFitDialog by remember { mutableStateOf(false) }
+    var orientationMode by rememberSaveable { mutableStateOf(FullscreenOrientationMode.Auto) }
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(playbackState.streamUrl) {
@@ -159,22 +165,21 @@ fun TVScreen(
         fullscreenState.value = false
     }
 
-    if (isFullscreen && hasChannelContext) {
-        BackHandler { fullscreenState.value = false }
-        ImmersiveMode()
-        DisposableEffect(currentChannel!!.streamId) {
-            playerManager.setTransportActions(
-                onNext = {
-                    isChannelSwitching = true
-                    viewModel.playNextChannel()
-                },
-                onPrevious = {
-                    isChannelSwitching = true
-                    viewModel.playPreviousChannel()
-                }
-            )
-            onDispose { playerManager.setTransportActions(null, null) }
-        }
+    BackHandler(enabled = isFullscreen && hasChannelContext) { fullscreenState.value = false }
+    ImmersiveMode(enabled = isFullscreen && hasChannelContext, orientationMode = orientationMode)
+    DisposableEffect(isFullscreen, currentChannel?.streamId) {
+        if (!(isFullscreen && hasChannelContext)) return@DisposableEffect onDispose {}
+        playerManager.setTransportActions(
+            onNext = {
+                isChannelSwitching = true
+                viewModel.playNextChannel()
+            },
+            onPrevious = {
+                isChannelSwitching = true
+                viewModel.playPreviousChannel()
+            }
+        )
+        onDispose { playerManager.setTransportActions(null, null) }
     }
 
     val shouldShowPlayer =
@@ -200,24 +205,38 @@ fun TVScreen(
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f)
                     },
-                    controlsLocked = showTrackDialog,
+                    controlsLocked = showTrackDialog || showFitDialog,
                     overlay = { state, _, setControlsVisible ->
                         if (isFullscreen) {
                             FullscreenOverlay(
                                 state = state,
                                 title = currentChannel!!.name,
                                 playerType = PlayerType.TV,
-                                hasTrackOptions = state.tracks.hasDialogOptions,
                                 hasProgress = false,
                                 hasPrevious = hasPrevious,
                                 hasNext = hasNext,
+                                orientationMode = orientationMode,
                                 onBack = {
                                     fullscreenState.value = false
                                     setControlsVisible(true)
                                 },
-                                onShowTracks = {
+                                onShowAudioTracks = {
                                     setControlsVisible(true)
+                                    trackDialogTab = TrackSelectionTab.Audio
                                     showTrackDialog = true
+                                },
+                                onShowSubtitleTracks = {
+                                    setControlsVisible(true)
+                                    trackDialogTab = TrackSelectionTab.Subtitles
+                                    showTrackDialog = true
+                                },
+                                onShowFit = {
+                                    setControlsVisible(true)
+                                    showFitDialog = true
+                                },
+                                onOrientationModeChange = { newMode ->
+                                    setControlsVisible(true)
+                                    orientationMode = newMode
                                 },
                                 onTogglePlay = {
                                     if (state.isPlaying) playerManager.pause() else playerManager.play()
@@ -302,11 +321,24 @@ fun TVScreen(
     if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
         TrackSelectionDialog(
             tracks = playbackState.tracks,
-            onDismiss = { showTrackDialog = false },
+            onDismiss = {
+                showTrackDialog = false
+                trackDialogTab = null
+            },
             onAudioSelected = { option -> playerManager.selectAudioTrack(option.id) },
             onSubtitleSelected = { option ->
                 if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
-            }
+            },
+            initialTab = trackDialogTab
+        )
+    }
+
+    if (showFitDialog) {
+        com.iptv.playxy.ui.player.VideoFitDialog(
+            selectedScale = playerManager.getVideoScaleType(),
+            onDismiss = { showFitDialog = false },
+            onScaleSelected = { scaleType -> playerManager.setVideoScaleType(scaleType) },
+            immersive = isFullscreen && hasChannelContext
         )
     }
 }

@@ -35,17 +35,23 @@ fun TrackSelectionDialog(
     tracks: PlaybackTracks,
     onDismiss: () -> Unit,
     onAudioSelected: (TrackOption) -> Unit,
-    onSubtitleSelected: (TrackOption?) -> Unit
+    onSubtitleSelected: (TrackOption?) -> Unit,
+    initialTab: TrackSelectionTab? = null
 ) {
-    val showAudioTab = tracks.audio.isNotEmpty()
+    val showAudioTab = tracks.audio.size > 1
     val showSubtitleTab = tracks.text.size > 1
     if (!showAudioTab && !showSubtitleTab) return
 
-    var selectedTab by remember { mutableIntStateOf(if (showAudioTab) 0 else 1) }
     val tabs = buildList {
         if (showAudioTab) add(TrackTab.Audio)
         if (showSubtitleTab) add(TrackTab.Subtitles)
     }
+    val initialSelectedTabIndex = when (initialTab) {
+        TrackSelectionTab.Audio -> tabs.indexOf(TrackTab.Audio)
+        TrackSelectionTab.Subtitles -> tabs.indexOf(TrackTab.Subtitles)
+        null -> 0
+    }.takeIf { it >= 0 } ?: 0
+    var selectedTab by remember(initialSelectedTabIndex) { mutableIntStateOf(initialSelectedTabIndex) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -155,3 +161,5 @@ private fun TrackList(
 }
 
 private enum class TrackTab { Audio, Subtitles }
+
+enum class TrackSelectionTab { Audio, Subtitles }

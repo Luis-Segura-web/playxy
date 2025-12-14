@@ -44,6 +44,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,11 +69,13 @@ import com.iptv.playxy.ui.LocalPipController
 import com.iptv.playxy.ui.LocalPlayerManager
 import com.iptv.playxy.ui.components.DetailLoadingScreen
 import com.iptv.playxy.ui.player.FullscreenOverlay
+import com.iptv.playxy.ui.player.FullscreenOrientationMode
 import com.iptv.playxy.ui.player.ImmersiveMode
 import com.iptv.playxy.ui.player.LocalPlayerContainerHost
 import com.iptv.playxy.ui.player.PlayerContainerConfig
 import com.iptv.playxy.ui.player.PlayerType
 import com.iptv.playxy.ui.player.SeriesMiniPlayerOverlay
+import com.iptv.playxy.ui.player.TrackSelectionTab
 import com.iptv.playxy.ui.player.TrackSelectionDialog
 import com.iptv.playxy.util.StreamUrlBuilder
 import kotlinx.coroutines.launch
@@ -296,22 +299,14 @@ fun SeriesDetailScreen(
             val canNext = currentEpisodeIndex in 0 until (allEpisodes.size - 1)
             val prevAction = if (canPrev) {
                 {
-                    isEpisodeSwitching = true
-                    playerManager.stopPlayback()
                     val prevEpisode = allEpisodes[currentEpisodeIndex - 1]
-                    currentEpisode = prevEpisode
-                    viewModel.setCurrentPlayingEpisode(prevEpisode.id)
-                    viewModel.saveProgress(uiState.series!!.seriesId, prevEpisode, 0L)
+                    playEpisode(prevEpisode)
                 }
             } else null
             val nextAction = if (canNext) {
                 {
-                    isEpisodeSwitching = true
-                    playerManager.stopPlayback()
                     val nextEpisode = allEpisodes[currentEpisodeIndex + 1]
-                    currentEpisode = nextEpisode
-                    viewModel.setCurrentPlayingEpisode(nextEpisode.id)
-                    viewModel.saveProgress(uiState.series!!.seriesId, nextEpisode, 0L)
+                    playEpisode(nextEpisode)
                 }
             } else null
             playerManager.setTransportActions(nextAction, prevAction)
@@ -383,6 +378,9 @@ fun SeriesDetailScreen(
         )
     } else {
         var showTrackDialog by remember { mutableStateOf(false) }
+        var trackDialogTab by remember { mutableStateOf<TrackSelectionTab?>(null) }
+        var showFitDialog by remember { mutableStateOf(false) }
+        var orientationMode by rememberSaveable { mutableStateOf(FullscreenOrientationMode.Auto) }
 
         val stopAndClose: () -> Unit = {
             if (uiState.series != null && currentEpisode != null) {
@@ -398,10 +396,32 @@ fun SeriesDetailScreen(
             fullscreenState.value = false
         }
 
-        if (isFullscreen && shouldShowHeaderPlayer) {
-            BackHandler { fullscreenState.value = false }
-            ImmersiveMode()
+        if (showTrackDialog && playbackState.tracks.hasDialogOptions) {
+            TrackSelectionDialog(
+                tracks = playbackState.tracks,
+                onDismiss = {
+                    showTrackDialog = false
+                    trackDialogTab = null
+                },
+                onAudioSelected = { option -> playerManager.selectAudioTrack(option.id) },
+                onSubtitleSelected = { option ->
+                    if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
+                },
+                initialTab = trackDialogTab
+            )
         }
+
+        if (showFitDialog) {
+            com.iptv.playxy.ui.player.VideoFitDialog(
+                selectedScale = playerManager.getVideoScaleType(),
+                onDismiss = { showFitDialog = false },
+                onScaleSelected = { scaleType -> playerManager.setVideoScaleType(scaleType) },
+                immersive = isFullscreen && shouldShowHeaderPlayer
+            )
+        }
+
+        BackHandler(enabled = isFullscreen && shouldShowHeaderPlayer) { fullscreenState.value = false }
+        ImmersiveMode(enabled = isFullscreen && shouldShowHeaderPlayer, orientationMode = orientationMode)
 
         if (shouldShowHeaderPlayer && currentStreamUrl != null) {
             LaunchedEffect(currentStreamUrl) {
@@ -468,25 +488,21 @@ fun SeriesDetailScreen(
                         playerContainer(
                             PlayerContainerConfig(
                                 state = playbackState,
-                                modifier = Modifier.fillMaxSize(),
-                                controlsLocked = showTrackDialog,
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize(),
+                                controlsLocked = showTrackDialog || showFitDialog,
                                 overlay = { state, _, setControlsVisible ->
                                     val onPreviousEpisode: () -> Unit = {
                                         if (currentEpisodeIndex > 0) {
-                                            isEpisodeSwitching = true
-                                            playerManager.stopPlayback()
                                             val prevEpisode = allEpisodes[currentEpisodeIndex - 1]
-                                            currentEpisode = prevEpisode
-                                            viewModel.setCurrentPlayingEpisode(prevEpisode.id)
+                                            playEpisode(prevEpisode)
                                         }
                                     }
                                     val onNextEpisode: () -> Unit = {
                                         if (currentEpisodeIndex < allEpisodes.size - 1) {
-                                            isEpisodeSwitching = true
-                                            playerManager.stopPlayback()
                                             val nextEpisode = allEpisodes[currentEpisodeIndex + 1]
-                                            currentEpisode = nextEpisode
-                                            viewModel.setCurrentPlayingEpisode(nextEpisode.id)
+                                            playEpisode(nextEpisode)
                                         }
                                     }
 
@@ -495,21 +511,33 @@ fun SeriesDetailScreen(
                                             state = state,
                                             title = "${displayTitle.ifBlank { uiState.series?.name.orEmpty() }} - T${ep.season} E${ep.episodeNum}",
                                             playerType = PlayerType.SERIES,
-                                            hasTrackOptions = state.tracks.hasDialogOptions,
                                             hasProgress = true,
                                             hasPrevious = hasPrevious,
                                             hasNext = hasNext,
+                                            orientationMode = orientationMode,
                                             onBack = {
                                                 fullscreenState.value = false
                                                 setControlsVisible(true)
                                             },
-                                            onShowTracks = {
+                                            onShowAudioTracks = {
                                                 setControlsVisible(true)
+                                                trackDialogTab = TrackSelectionTab.Audio
                                                 showTrackDialog = true
                                             },
-                                            onTogglePlay = {
-                                                if (state.isPlaying) playerManager.pause() else playerManager.play()
+                                            onShowSubtitleTracks = {
+                                                setControlsVisible(true)
+                                                trackDialogTab = TrackSelectionTab.Subtitles
+                                                showTrackDialog = true
                                             },
+                                            onShowFit = {
+                                                setControlsVisible(true)
+                                                showFitDialog = true
+                                            },
+                                            onOrientationModeChange = { newMode ->
+                                                setControlsVisible(true)
+                                                orientationMode = newMode
+                                            },
+                                            onTogglePlay = { if (state.isPlaying) playerManager.pause() else playerManager.play() },
                                             onSeekBack = { playerManager.seekBackward() },
                                             onSeekForward = { playerManager.seekForward() },
                                             onRetry = { playerManager.playMedia(currentStreamUrl, PlayerType.SERIES, forcePrepare = true) },

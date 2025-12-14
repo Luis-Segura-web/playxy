@@ -53,6 +53,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     private val mediaPlayer = MediaPlayer(libVlc)
     private var currentVideoLayout: VLCVideoLayout? = null
+    private var videoScaleType: MediaPlayer.ScaleType = MediaPlayer.ScaleType.SURFACE_BEST_FIT
 
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
@@ -72,6 +73,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private var detachViewsJob: Job? = null
     private val stopEventsToIgnore = AtomicInteger(0)
     private val maxRetries = 3
+    private val maxVideoReattachAttempts = 6
     private val retryDelayMs = 2000L
     private val detachViewsDelayMs = 900L
 
@@ -177,26 +179,19 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     private fun scheduleVideoReattach(reason: String) {
         val layoutSnapshot = currentVideoLayout ?: return
-        if (videoReattachAttempts >= 3) return
+        if (videoReattachAttempts >= maxVideoReattachAttempts) return
         if (!layoutSnapshot.isAttachedToWindow) return
 
         videoReattachAttempts++
+        val attempt = videoReattachAttempts
         videoReattachJob?.cancel()
         videoReattachJob = scope.launch {
-            delay(150L * videoReattachAttempts)
+            delay(200L * attempt)
             if (currentVideoLayout !== layoutSnapshot) return@launch
             if (!layoutSnapshot.isAttachedToWindow) return@launch
             if (!mediaPlayer.isPlaying || currentRequest == null) return@launch
-            Log.w(TAG, "Reatachando video layout ($reason), intento $videoReattachAttempts/3")
+            Log.w(TAG, "Reatachando video layout ($reason), intento $attempt/$maxVideoReattachAttempts")
             runCatching { mediaPlayer.updateVideoSurfaces() }
-
-            // Evitar reiniciar el decoder en intentos tempranos: eso provoca pantalla negra hasta el siguiente keyframe.
-            // Si sigue sin vout tras varios intentos, como último recurso recreamos las views.
-            if (videoReattachAttempts >= 3) {
-                runCatching { mediaPlayer.detachViews() }
-                runCatching { mediaPlayer.attachViews(layoutSnapshot, null, false, true) }
-                runCatching { mediaPlayer.updateVideoSurfaces() }
-            }
         }
     }
 
@@ -395,6 +390,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     fun attachVideoLayout(layout: VLCVideoLayout) {
         detachViewsJob?.cancel()
         if (currentVideoLayout === layout) {
+            runCatching { mediaPlayer.videoScale = videoScaleType }
             runCatching { mediaPlayer.updateVideoSurfaces() }
             return
         }
@@ -403,12 +399,21 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         videoReattachJob?.cancel()
         videoReattachAttempts = 0
         mediaPlayer.attachViews(layout, null, false, true)
+        runCatching { mediaPlayer.videoScale = videoScaleType }
         runCatching { mediaPlayer.updateVideoSurfaces() }
     }
 
     fun refreshVideoSurfaces() {
         runCatching { mediaPlayer.updateVideoSurfaces() }
     }
+
+    fun setVideoScaleType(scaleType: MediaPlayer.ScaleType) {
+        videoScaleType = scaleType
+        runCatching { mediaPlayer.videoScale = scaleType }
+        runCatching { mediaPlayer.updateVideoSurfaces() }
+    }
+
+    fun getVideoScaleType(): MediaPlayer.ScaleType = videoScaleType
 
     fun detachVideoLayout(layout: VLCVideoLayout) {
         if (currentVideoLayout === layout) {
