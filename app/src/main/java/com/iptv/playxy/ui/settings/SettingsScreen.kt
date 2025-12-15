@@ -33,6 +33,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.iptv.playxy.ui.main.sanitizePin
+import com.iptv.playxy.ui.LocalPlayerManager
+import com.iptv.playxy.ui.player.PlayerEngineSettingsDialog
+import com.iptv.playxy.domain.player.PlayerEngineConfig
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,6 +47,7 @@ fun ModernSettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val playerManager = LocalPlayerManager.current
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
@@ -51,6 +55,7 @@ fun ModernSettingsScreen(
     var showPinPromptFor by remember { mutableStateOf<PinPromptPurpose?>(null) }
     var showChangePin by remember { mutableStateOf(false) }
     var showHiddenCategories by remember { mutableStateOf(false) }
+    var showPlayerEngineDialog by remember { mutableStateOf(false) }
     var enableAfterPinSave by remember { mutableStateOf(false) }
     var postPinSuccessAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var pinPromptError by remember { mutableStateOf<String?>(null) }
@@ -147,6 +152,22 @@ fun ModernSettingsScreen(
                     subtitle = "Recargar desde el servidor",
                     icon = Icons.Outlined.Refresh,
                     onClick = onForceReload,
+                    showArrow = true
+                )
+            }
+
+            // Reproductor
+            MinimalistSection(
+                title = "Reproductor",
+                icon = Icons.Outlined.Tune
+            ) {
+                MinimalistSettingItem(
+                    title = "Motor de reproducci\u00f3n",
+                    subtitle = remember(uiState.playerEngineConfig) {
+                        formatPlayerEngineSummary(uiState.playerEngineConfig)
+                    },
+                    icon = Icons.Outlined.SettingsSuggest,
+                    onClick = { showPlayerEngineDialog = true },
                     showArrow = true
                 )
             }
@@ -389,6 +410,17 @@ fun ModernSettingsScreen(
                 onClick = { showLogoutDialog = true }
             )
         }
+    }
+
+    if (showPlayerEngineDialog) {
+        PlayerEngineSettingsDialog(
+            initialConfig = uiState.playerEngineConfig,
+            onDismiss = { showPlayerEngineDialog = false },
+            onApply = { config ->
+                viewModel.setPlayerEngineConfig(config)
+                playerManager.setEngineConfig(config)
+            }
+        )
     }
 
     // Dialogs modernizados
@@ -1420,4 +1452,25 @@ internal fun ModernHiddenCategoriesScreen(
 private enum class PinPromptPurpose {
     DISABLE,
     OPEN_CATEGORIES
+}
+
+private fun formatPlayerEngineSummary(config: PlayerEngineConfig): String {
+    val decoder = when (config.decoderMode) {
+        com.iptv.playxy.domain.player.DecoderMode.HARDWARE -> "HW"
+        com.iptv.playxy.domain.player.DecoderMode.SOFTWARE -> "SW"
+    }
+    val audio = when (config.audioOutput) {
+        com.iptv.playxy.domain.player.AudioOutput.DEFAULT -> "Audio: Default"
+        com.iptv.playxy.domain.player.AudioOutput.OPENSL_ES -> "Audio: OpenSL ES"
+    }
+    val video = when (config.videoOutput) {
+        com.iptv.playxy.domain.player.VideoOutput.DEFAULT -> "Video: Default"
+        com.iptv.playxy.domain.player.VideoOutput.OPENGL_GLES2 -> "Video: OpenGL"
+    }
+    val chroma = when (config.androidDisplayChroma) {
+        com.iptv.playxy.domain.player.AndroidDisplayChroma.DEFAULT -> "Pixel: Default"
+        com.iptv.playxy.domain.player.AndroidDisplayChroma.RV32 -> "Pixel: RV32"
+        com.iptv.playxy.domain.player.AndroidDisplayChroma.RGB16 -> "Pixel: RGB16"
+    }
+    return "$decoder \u2022 $audio \u2022 $video \u2022 $chroma"
 }

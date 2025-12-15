@@ -334,6 +334,7 @@ fun MovieDetailScreen(
         var showTrackDialog by remember { mutableStateOf(false) }
         var trackDialogTab by remember { mutableStateOf<TrackSelectionTab?>(null) }
         var showFitDialog by remember { mutableStateOf(false) }
+        var showEngineDialog by remember { mutableStateOf(false) }
         var orientationMode by rememberSaveable { mutableStateOf(FullscreenOrientationMode.Auto) }
 
         val stopAndClose: () -> Unit = {
@@ -394,9 +395,9 @@ fun MovieDetailScreen(
                             PlayerContainerConfig(
                                 state = playbackState,
                                 modifier =
-                                    Modifier
+                                     Modifier
                                         .fillMaxSize(),
-                                controlsLocked = showTrackDialog || showFitDialog,
+                                controlsLocked = showTrackDialog || showFitDialog || showEngineDialog,
                                 overlay = { state, _, setControlsVisible ->
                                     if (isFullscreen) {
                                          FullscreenOverlay(
@@ -421,14 +422,18 @@ fun MovieDetailScreen(
                                                  trackDialogTab = TrackSelectionTab.Subtitles
                                                  showTrackDialog = true
                                              },
-                                             onShowFit = {
-                                                 setControlsVisible(true)
-                                                 showFitDialog = true
-                                             },
-                                             onOrientationModeChange = { newMode ->
-                                                 setControlsVisible(true)
-                                                 orientationMode = newMode
-                                             },
+                                              onShowFit = {
+                                                  setControlsVisible(true)
+                                                  showFitDialog = true
+                                              },
+                                              onShowEngineSettings = {
+                                                  setControlsVisible(true)
+                                                  showEngineDialog = true
+                                              },
+                                              onOrientationModeChange = { newMode ->
+                                                  setControlsVisible(true)
+                                                  orientationMode = newMode
+                                              },
                                              onTogglePlay = {
                                                  if (state.isPlaying) playerManager.pause() else playerManager.play()
                                              },
@@ -438,12 +443,12 @@ fun MovieDetailScreen(
                                             onSeek = { position -> playerManager.seekTo(position) },
                                             onPrevious = null,
                                             onNext = null,
-                                            enablePrevious = false,
-                                            enableNext = false,
-                                            onPip = { pipController.requestPip(onClose = stopAndClose) }
-                                        )
-                                    } else {
-                                        MovieMiniPlayerOverlay(
+                                             enablePrevious = false,
+                                             enableNext = false,
+                                             onPip = { pipController.requestPip(onClose = stopAndClose) }
+                                         )
+                                     } else {
+                                         MovieMiniPlayerOverlay(
                                             title = displayTitle,
                                             state = state,
                                             onClose = {
@@ -457,15 +462,19 @@ fun MovieDetailScreen(
                                                 if (state.isPlaying) playerManager.pause() else playerManager.play()
                                             },
                                             onFullscreen = { fullscreenState.value = true },
-                                            onShowTracks = {
-                                                setControlsVisible(true)
-                                                showTrackDialog = true
-                                            },
-                                            onSeek = { position -> playerManager.seekTo(position) },
-                                            hasTrackOptions = state.tracks.hasDialogOptions,
-                                            onPip = { pipController.requestPip(onClose = stopAndClose) }
-                                        )
-                                    }
+                                             onShowTracks = {
+                                                 setControlsVisible(true)
+                                                 showTrackDialog = true
+                                             },
+                                             onShowEngineSettings = {
+                                                 setControlsVisible(true)
+                                                 showEngineDialog = true
+                                             },
+                                             onSeek = { position -> playerManager.seekTo(position) },
+                                             hasTrackOptions = state.tracks.hasDialogOptions,
+                                             onPip = { pipController.requestPip(onClose = stopAndClose) }
+                                         )
+                                     }
                                 }
                             )
                         )
@@ -908,6 +917,15 @@ fun MovieDetailScreen(
                 selectedScale = playerManager.getVideoScaleType(),
                 onDismiss = { showFitDialog = false },
                 onScaleSelected = { scaleType -> playerManager.setVideoScaleType(scaleType) },
+                immersive = isFullscreen && shouldShowHeaderPlayer
+            )
+        }
+
+        if (showEngineDialog) {
+            com.iptv.playxy.ui.player.PlayerEngineSettingsDialog(
+                initialConfig = playerManager.getEngineConfig(),
+                onDismiss = { showEngineDialog = false },
+                onApply = { config -> playerManager.setEngineConfig(config) },
                 immersive = isFullscreen && shouldShowHeaderPlayer
             )
         }

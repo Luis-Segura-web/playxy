@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.playxy.data.repository.IptvRepository
 import com.iptv.playxy.data.repository.PreferencesManager
+import com.iptv.playxy.domain.player.PlayerEngineConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +32,8 @@ data class SettingsUiState(
     val seriesCategories: List<com.iptv.playxy.domain.Category> = emptyList(),
     val blockedLive: Set<String> = emptySet(),
     val blockedVod: Set<String> = emptySet(),
-    val blockedSeries: Set<String> = emptySet()
+    val blockedSeries: Set<String> = emptySet(),
+    val playerEngineConfig: PlayerEngineConfig = PlayerEngineConfig()
 )
 
 @HiltViewModel
@@ -56,6 +58,7 @@ class SettingsViewModel @Inject constructor(
             val blockedLive = repository.getBlockedCategories("live")
             val blockedVod = repository.getBlockedCategories("vod")
             val blockedSeries = repository.getBlockedCategories("series")
+            val playerEngineConfig = repository.getPlayerEngineConfig()
             val profile = repository.refreshStoredProfileInfo() ?: repository.getProfile()
             _uiState.value = _uiState.value.copy(
                 recentsLimit = limit,
@@ -69,6 +72,7 @@ class SettingsViewModel @Inject constructor(
                 blockedLive = blockedLive,
                 blockedVod = blockedVod,
                 blockedSeries = blockedSeries,
+                playerEngineConfig = playerEngineConfig,
                 profileName = profile?.profileName.orEmpty(),
                 username = profile?.username.orEmpty(),
                 serverUrl = profile?.url.orEmpty(),
@@ -165,6 +169,14 @@ class SettingsViewModel @Inject constructor(
                 status = profile?.status?.ifBlank { null } ?: "Desconocido"
             )
             _events.emit(SettingsEvent.ShowMessage("Datos de cuenta actualizados"))
+        }
+    }
+
+    fun setPlayerEngineConfig(config: PlayerEngineConfig) {
+        viewModelScope.launch {
+            repository.setPlayerEngineConfig(config)
+            _uiState.value = _uiState.value.copy(playerEngineConfig = config)
+            _events.emit(SettingsEvent.ShowMessage("Motor del reproductor actualizado"))
         }
     }
 

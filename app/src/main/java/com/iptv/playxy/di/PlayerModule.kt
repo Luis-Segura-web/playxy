@@ -1,6 +1,7 @@
 package com.iptv.playxy.di
 
 import android.content.Context
+import com.iptv.playxy.data.repository.PreferencesManager
 import com.iptv.playxy.ui.player.PlayerManager
 import dagger.Module
 import dagger.Provides
@@ -15,8 +16,10 @@ object PlayerModule {
 
     @Provides
     @Singleton
-    fun providePlayerManager(@ApplicationContext context: Context): PlayerManager {
-        return PlayerManager(context)
+    fun providePlayerManager(
+        @ApplicationContext context: Context,
+        preferencesManager: PreferencesManager
+    ): PlayerManager {
+        return PlayerManager(context, preferencesManager)
     }
 }
-

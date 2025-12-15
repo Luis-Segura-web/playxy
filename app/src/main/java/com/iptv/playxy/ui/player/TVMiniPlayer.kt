@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ fun TVMiniPlayer(
 ) {
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
+    var showEngineDialog by remember { mutableStateOf(false) }
     val pipController = LocalPipController.current
 
     LaunchedEffect(streamUrl) {
@@ -73,7 +75,7 @@ fun TVMiniPlayer(
             modifier = modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f),
-            controlsLocked = showTrackDialog,
+            controlsLocked = showTrackDialog || showEngineDialog,
             overlay = { state, _, setControlsVisible ->
                 TVMiniOverlay(
                     state = state,
@@ -95,6 +97,10 @@ fun TVMiniPlayer(
                         setControlsVisible(true)
                         showTrackDialog = true
                     },
+                    onShowEngineSettings = {
+                        setControlsVisible(true)
+                        showEngineDialog = true
+                    },
                     onFullscreen = onFullscreen,
                     onPip = { pipController.requestPip(onClose = onClose) }
                 )
@@ -112,6 +118,14 @@ fun TVMiniPlayer(
             }
         )
     }
+
+    if (showEngineDialog) {
+        PlayerEngineSettingsDialog(
+            initialConfig = playerManager.getEngineConfig(),
+            onDismiss = { showEngineDialog = false },
+            onApply = { config -> playerManager.setEngineConfig(config) }
+        )
+    }
 }
 
 @Composable
@@ -127,6 +141,7 @@ internal fun TVMiniOverlay(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onShowTracks: () -> Unit,
+    onShowEngineSettings: () -> Unit,
     onFullscreen: () -> Unit,
     onPip: () -> Unit
 ) {
@@ -240,6 +255,9 @@ internal fun TVMiniOverlay(
                     IconButton(onClick = onShowTracks) {
                         Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
                     }
+                }
+                IconButton(onClick = onShowEngineSettings) {
+                    Icon(imageVector = Icons.Default.Tune, contentDescription = "Motor", tint = Color.White)
                 }
                 IconButton(onClick = onPip) {
                     Icon(

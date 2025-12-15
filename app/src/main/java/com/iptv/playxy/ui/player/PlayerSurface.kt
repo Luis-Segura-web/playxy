@@ -9,6 +9,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewTreeObserver
 import com.iptv.playxy.R
 import org.videolan.libvlc.util.VLCVideoLayout
 
@@ -24,13 +25,42 @@ fun PlayerSurface(
         factory = { context ->
             (LayoutInflater.from(context).inflate(R.layout.player_compose_view, null, false) as VLCVideoLayout).apply {
                 this.keepScreenOn = keepScreenOn
+                var layoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+
+                fun attachWhenSized() {
+                    if (!isAttachedToWindow) return
+                    if (width <= 0 || height <= 0) return
+                    layoutListener?.let { listener ->
+                        if (viewTreeObserver.isAlive) {
+                            viewTreeObserver.removeOnGlobalLayoutListener(listener)
+                        }
+                        layoutListener = null
+                    }
+                    playerManager.attachVideoLayout(this)
+                }
+
                 addOnAttachStateChangeListener(
                     object : View.OnAttachStateChangeListener {
                         override fun onViewAttachedToWindow(view: View) {
-                            playerManager.attachVideoLayout(this@apply)
+                            // Evita "Invalid surface size" en LibVLC esperando a tener medidas reales.
+                            layoutListener?.let { listener ->
+                                if (viewTreeObserver.isAlive) {
+                                    viewTreeObserver.removeOnGlobalLayoutListener(listener)
+                                }
+                                layoutListener = null
+                            }
+                            layoutListener = ViewTreeObserver.OnGlobalLayoutListener { attachWhenSized() }
+                            viewTreeObserver.addOnGlobalLayoutListener(layoutListener)
+                            post { attachWhenSized() }
                         }
 
                         override fun onViewDetachedFromWindow(view: View) {
+                            layoutListener?.let { listener ->
+                                if (viewTreeObserver.isAlive) {
+                                    viewTreeObserver.removeOnGlobalLayoutListener(listener)
+                                }
+                                layoutListener = null
+                            }
                             playerManager.detachVideoLayout(this@apply)
                         }
                     }

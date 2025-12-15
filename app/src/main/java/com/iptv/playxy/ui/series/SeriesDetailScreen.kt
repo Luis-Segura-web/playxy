@@ -380,6 +380,7 @@ fun SeriesDetailScreen(
         var showTrackDialog by remember { mutableStateOf(false) }
         var trackDialogTab by remember { mutableStateOf<TrackSelectionTab?>(null) }
         var showFitDialog by remember { mutableStateOf(false) }
+        var showEngineDialog by remember { mutableStateOf(false) }
         var orientationMode by rememberSaveable { mutableStateOf(FullscreenOrientationMode.Auto) }
 
         val stopAndClose: () -> Unit = {
@@ -416,6 +417,15 @@ fun SeriesDetailScreen(
                 selectedScale = playerManager.getVideoScaleType(),
                 onDismiss = { showFitDialog = false },
                 onScaleSelected = { scaleType -> playerManager.setVideoScaleType(scaleType) },
+                immersive = isFullscreen && shouldShowHeaderPlayer
+            )
+        }
+
+        if (showEngineDialog) {
+            com.iptv.playxy.ui.player.PlayerEngineSettingsDialog(
+                initialConfig = playerManager.getEngineConfig(),
+                onDismiss = { showEngineDialog = false },
+                onApply = { config -> playerManager.setEngineConfig(config) },
                 immersive = isFullscreen && shouldShowHeaderPlayer
             )
         }
@@ -491,7 +501,7 @@ fun SeriesDetailScreen(
                                 modifier =
                                     Modifier
                                         .fillMaxSize(),
-                                controlsLocked = showTrackDialog || showFitDialog,
+                                controlsLocked = showTrackDialog || showFitDialog || showEngineDialog,
                                 overlay = { state, _, setControlsVisible ->
                                     val onPreviousEpisode: () -> Unit = {
                                         if (currentEpisodeIndex > 0) {
@@ -533,6 +543,10 @@ fun SeriesDetailScreen(
                                                 setControlsVisible(true)
                                                 showFitDialog = true
                                             },
+                                            onShowEngineSettings = {
+                                                setControlsVisible(true)
+                                                showEngineDialog = true
+                                            },
                                             onOrientationModeChange = { newMode ->
                                                 setControlsVisible(true)
                                                 orientationMode = newMode
@@ -571,6 +585,10 @@ fun SeriesDetailScreen(
                                             onShowTracks = {
                                                 setControlsVisible(true)
                                                 showTrackDialog = true
+                                            },
+                                            onShowEngineSettings = {
+                                                setControlsVisible(true)
+                                                showEngineDialog = true
                                             },
                                             onFullscreen = { fullscreenState.value = true },
                                             onSeek = { position -> playerManager.seekTo(position) },

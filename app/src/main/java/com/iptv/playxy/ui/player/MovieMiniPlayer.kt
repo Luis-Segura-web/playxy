@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +54,7 @@ fun MovieMiniPlayer(
 ) {
     val playbackState by playerManager.uiState.collectAsStateWithLifecycle()
     var showTrackDialog by remember { mutableStateOf(false) }
+    var showEngineDialog by remember { mutableStateOf(false) }
     val pipController = LocalPipController.current
 
     val playerContainer = LocalPlayerContainerHost.current
@@ -69,7 +71,7 @@ fun MovieMiniPlayer(
             modifier = modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f),
-            controlsLocked = showTrackDialog,
+            controlsLocked = showTrackDialog || showEngineDialog,
             overlay = { state, _, setControlsVisible ->
                 MovieMiniPlayerOverlay(
                     title = movieTitle,
@@ -89,6 +91,10 @@ fun MovieMiniPlayer(
                         setControlsVisible(true)
                         showTrackDialog = true
                     },
+                    onShowEngineSettings = {
+                        setControlsVisible(true)
+                        showEngineDialog = true
+                    },
                     onSeek = { position -> playerManager.seekTo(position) },
                     hasTrackOptions = state.tracks.hasDialogOptions,
                     onPip = { pipController.requestPip(onClose = onClose) }
@@ -107,6 +113,14 @@ fun MovieMiniPlayer(
             }
         )
     }
+
+    if (showEngineDialog) {
+        PlayerEngineSettingsDialog(
+            initialConfig = playerManager.getEngineConfig(),
+            onDismiss = { showEngineDialog = false },
+            onApply = { config -> playerManager.setEngineConfig(config) }
+        )
+    }
 }
 
 @Composable
@@ -120,6 +134,7 @@ internal fun MovieMiniPlayerOverlay(
     onTogglePlay: () -> Unit,
     onFullscreen: () -> Unit,
     onShowTracks: () -> Unit,
+    onShowEngineSettings: () -> Unit,
     onSeek: (Long) -> Unit,
     hasTrackOptions: Boolean,
     onPip: () -> Unit
@@ -222,6 +237,9 @@ internal fun MovieMiniPlayerOverlay(
                         IconButton(onClick = onShowTracks) {
                             Icon(imageVector = Icons.Default.Settings, contentDescription = "Pistas", tint = Color.White)
                         }
+                    }
+                    IconButton(onClick = onShowEngineSettings) {
+                        Icon(imageVector = Icons.Default.Tune, contentDescription = "Motor", tint = Color.White)
                     }
                     IconButton(onClick = onPip) {
                         Icon(

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.StayCurrentLandscape
 import androidx.compose.material.icons.filled.StayCurrentPortrait
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -79,6 +80,7 @@ fun FullscreenPlayer(
     var showTrackDialog by remember { mutableStateOf(false) }
     var trackDialogTab by remember { mutableStateOf<TrackSelectionTab?>(null) }
     var showFitDialog by remember { mutableStateOf(false) }
+    var showEngineDialog by remember { mutableStateOf(false) }
     var orientationMode by rememberSaveable { mutableStateOf(FullscreenOrientationMode.Auto) }
     val playerContainer = LocalPlayerContainerHost.current
     val pipController = LocalPipController.current
@@ -97,7 +99,7 @@ fun FullscreenPlayer(
         PlayerContainerConfig(
             state = playbackState,
             modifier = modifier.fillMaxSize(),
-            controlsLocked = showTrackDialog || showFitDialog,
+            controlsLocked = showTrackDialog || showFitDialog || showEngineDialog,
             overlay = { state, _, setControlsVisible ->
                 FullscreenOverlay(
                     state = state,
@@ -124,6 +126,10 @@ fun FullscreenPlayer(
                     onShowFit = {
                         setControlsVisible(true)
                         showFitDialog = true
+                    },
+                    onShowEngineSettings = {
+                        setControlsVisible(true)
+                        showEngineDialog = true
                     },
                     onOrientationModeChange = { newMode ->
                         setControlsVisible(true)
@@ -169,6 +175,15 @@ fun FullscreenPlayer(
             immersive = true
         )
     }
+
+    if (showEngineDialog) {
+        PlayerEngineSettingsDialog(
+            initialConfig = playerManager.getEngineConfig(),
+            onDismiss = { showEngineDialog = false },
+            onApply = { config -> playerManager.setEngineConfig(config) },
+            immersive = true
+        )
+    }
 }
 
 @Composable
@@ -184,6 +199,7 @@ internal fun FullscreenOverlay(
     onShowAudioTracks: () -> Unit,
     onShowSubtitleTracks: () -> Unit,
     onShowFit: () -> Unit,
+    onShowEngineSettings: () -> Unit,
     onOrientationModeChange: (FullscreenOrientationMode) -> Unit,
     onTogglePlay: () -> Unit,
     onSeekBack: () -> Unit,
@@ -252,6 +268,13 @@ internal fun FullscreenOverlay(
                         Icon(
                             imageVector = Icons.Default.AspectRatio,
                             contentDescription = "Ajuste de pantalla",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(onClick = onShowEngineSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Motor de reproducci\u00f3n",
                             tint = Color.White
                         )
                     }

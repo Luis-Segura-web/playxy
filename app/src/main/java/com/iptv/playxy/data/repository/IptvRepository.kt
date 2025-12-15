@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.time.LocalDate
+import com.iptv.playxy.domain.player.PlayerEngineConfig
 
 /**
  * Repository for managing IPTV content data
@@ -80,6 +81,13 @@ class IptvRepository @Inject constructor(
 
     fun recentsCleared(): SharedFlow<String> = recentsEvents.asSharedFlow()
     fun prefEvents(): SharedFlow<String> = prefEvents.asSharedFlow()
+
+    fun getPlayerEngineConfig(): PlayerEngineConfig = prefs.getPlayerEngineConfig()
+
+    fun setPlayerEngineConfig(config: PlayerEngineConfig) {
+        prefs.setPlayerEngineConfig(config)
+        prefEvents.tryEmit("player_engine_config")
+    }
     
     // User Profile operations
     suspend fun getProfile(): UserProfile? {

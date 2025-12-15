@@ -87,6 +87,7 @@ fun TVScreen(
     var showTrackDialog by remember { mutableStateOf(false) }
     var trackDialogTab by remember { mutableStateOf<TrackSelectionTab?>(null) }
     var showFitDialog by remember { mutableStateOf(false) }
+    var showEngineDialog by remember { mutableStateOf(false) }
     var orientationMode by rememberSaveable { mutableStateOf(FullscreenOrientationMode.Auto) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -205,7 +206,7 @@ fun TVScreen(
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f)
                     },
-                    controlsLocked = showTrackDialog || showFitDialog,
+                    controlsLocked = showTrackDialog || showFitDialog || showEngineDialog,
                     overlay = { state, _, setControlsVisible ->
                         if (isFullscreen) {
                             FullscreenOverlay(
@@ -233,6 +234,10 @@ fun TVScreen(
                                 onShowFit = {
                                     setControlsVisible(true)
                                     showFitDialog = true
+                                },
+                                onShowEngineSettings = {
+                                    setControlsVisible(true)
+                                    showEngineDialog = true
                                 },
                                 onOrientationModeChange = { newMode ->
                                     setControlsVisible(true)
@@ -271,6 +276,10 @@ fun TVScreen(
                                 onShowTracks = {
                                     setControlsVisible(true)
                                     showTrackDialog = true
+                                },
+                                onShowEngineSettings = {
+                                    setControlsVisible(true)
+                                    showEngineDialog = true
                                 },
                                 onFullscreen = { fullscreenState.value = true },
                                 onPip = { pipController.requestPip(onClose = stopAndClose) }
@@ -338,6 +347,15 @@ fun TVScreen(
             selectedScale = playerManager.getVideoScaleType(),
             onDismiss = { showFitDialog = false },
             onScaleSelected = { scaleType -> playerManager.setVideoScaleType(scaleType) },
+            immersive = isFullscreen && hasChannelContext
+        )
+    }
+
+    if (showEngineDialog) {
+        com.iptv.playxy.ui.player.PlayerEngineSettingsDialog(
+            initialConfig = playerManager.getEngineConfig(),
+            onDismiss = { showEngineDialog = false },
+            onApply = { config -> playerManager.setEngineConfig(config) },
             immersive = isFullscreen && hasChannelContext
         )
     }

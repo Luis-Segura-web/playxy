@@ -2,7 +2,9 @@ package com.iptv.playxy.ui.player
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
+import com.iptv.playxy.data.repository.PreferencesManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +22,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
+import com.iptv.playxy.domain.player.PlayerEngineConfig
+import com.iptv.playxy.domain.player.DecoderMode
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -27,9 +31,16 @@ import org.videolan.libvlc.util.VLCVideoLayout
 
 private const val TAG = "PlayerManager"
 private const val POSITION_UPDATE_INTERVAL_MS = 500L
+private const val HEALTH_MONITOR_INTERVAL_MS = 1000L
+private const val HW_STALL_GRACE_MS = 6000L
+private const val HW_STALL_TIMEOUT_MS = 4500L
+private const val HW_STALL_MIN_PROGRESS_DELTA_MS = 250L
 
 @Singleton
-class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
+class PlayerManager @Inject constructor(
+    @ApplicationContext context: Context,
+    private val preferencesManager: PreferencesManager
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val appContext = context.applicationContext
@@ -38,22 +49,15 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private var nextAction: (() -> Unit)? = null
     private var previousAction: (() -> Unit)? = null
 
-    private val libVlc = LibVLC(
-        appContext,
-        arrayListOf(
-            "--no-video-title-show",
-            "--audio-time-stretch",
-            "--http-reconnect",
-            "--network-caching=3500",
-            "--live-caching=3000",
-            "--clock-jitter=0",
-            "--clock-synchro=0"
-        )
-    )
-
-    private val mediaPlayer = MediaPlayer(libVlc)
+    private var engineConfig: PlayerEngineConfig = preferencesManager.getPlayerEngineConfig()
+    private var libVlc: LibVLC = LibVLC(appContext, engineConfig.toLibVlcOptions())
+    private var mediaPlayer: MediaPlayer = MediaPlayer(libVlc)
     private var currentVideoLayout: VLCVideoLayout? = null
     private var videoScaleType: MediaPlayer.ScaleType = MediaPlayer.ScaleType.SURFACE_BEST_FIT
+
+    private var pendingSeekAfterPlayMs: Long? = null
+    private var playbackSessionId: Int = 0
+    private var hwFallbackSessionId: Int? = null
 
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
@@ -71,6 +75,11 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private var videoReattachJob: Job? = null
     private var videoReattachAttempts: Int = 0
     private var detachViewsJob: Job? = null
+    private var pendingPlayUntilSurface = false
+    private var healthJob: Job? = null
+    private var healthIgnoreUntilMs: Long = 0L
+    private var lastHealthPositionMs: Long = 0L
+    private var lastHealthProgressMs: Long = 0L
     private val stopEventsToIgnore = AtomicInteger(0)
     private val maxRetries = 3
     private val maxVideoReattachAttempts = 6
@@ -78,7 +87,161 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
     private val detachViewsDelayMs = 900L
 
     init {
-        mediaPlayer.setEventListener { event ->
+        bindMediaPlayerEvents(mediaPlayer)
+        startProgressUpdates()
+        startHealthMonitor()
+    }
+
+    fun setEngineConfig(config: PlayerEngineConfig) {
+        if (engineConfig == config) return
+        engineConfig = config
+        preferencesManager.setPlayerEngineConfig(config)
+        recreateEngine()
+    }
+
+    fun getEngineConfig(): PlayerEngineConfig = engineConfig
+
+    private fun setEngineConfigTemporary(config: PlayerEngineConfig) {
+        if (engineConfig == config) return
+        engineConfig = config
+        recreateEngine(resumeIfPlaying = false)
+    }
+
+    private fun recreateEngine(resumeIfPlaying: Boolean = true) {
+        val requestSnapshot = currentRequest
+        val resume = resumeIfPlaying && requestSnapshot != null && mediaPlayer.isPlaying && !userStopped
+        val resumePositionMs =
+            if (resume && requestSnapshot?.type != PlayerType.TV) {
+                safePositionMs().takeIf { it > 0L }
+            } else {
+                null
+            }
+
+        runCatching { mediaPlayer.detachViews() }
+        runCatching { mediaPlayer.stop() }
+        runCatching { mediaPlayer.release() }
+        runCatching { libVlc.release() }
+
+        libVlc = LibVLC(appContext, engineConfig.toLibVlcOptions())
+        mediaPlayer = MediaPlayer(libVlc)
+        bindMediaPlayerEvents(mediaPlayer)
+
+        currentVideoLayout?.let { layout ->
+            if (layout.isAttachedToWindow) {
+                runCatching { mediaPlayer.attachViews(layout, null, true, true) }
+                runCatching { mediaPlayer.videoScale = videoScaleType }
+                runCatching { mediaPlayer.updateVideoSurfaces() }
+            }
+        }
+
+        if (resume) {
+            playMedia(
+                requestSnapshot!!.url,
+                requestSnapshot.type,
+                forcePrepare = true,
+                startPositionMs = resumePositionMs
+            )
+        }
+    }
+
+    private fun maybeFallbackToSoftware(reason: String): Boolean {
+        val request = currentRequest ?: return false
+        if (engineConfig.decoderMode != DecoderMode.HARDWARE) return false
+        if (hwFallbackSessionId == playbackSessionId) return false
+
+        hwFallbackSessionId = playbackSessionId
+
+        val resumePositionMs =
+            when (request.type) {
+                PlayerType.TV -> null
+                PlayerType.MOVIE, PlayerType.SERIES -> safePositionMs().takeIf { it > 0L }
+            }
+
+        Log.w(TAG, "Falling back to software decoder ($reason). Resume=$resumePositionMs")
+        pendingSeekAfterPlayMs = resumePositionMs
+        setEngineConfigTemporary(engineConfig.copy(decoderMode = DecoderMode.SOFTWARE))
+        playMedia(request.url, request.type, forcePrepare = true, startPositionMs = resumePositionMs)
+        return true
+    }
+
+    private fun applyPendingSeekIfNeeded() {
+        val seekMs = pendingSeekAfterPlayMs ?: return
+        val request = currentRequest
+        if (request == null || request.type == PlayerType.TV) {
+            pendingSeekAfterPlayMs = null
+            return
+        }
+
+        pendingSeekAfterPlayMs = null
+        scope.launch {
+            delay(200L)
+            markHealthGracePeriod("PendingSeek", graceMs = 5000L)
+            runCatching { mediaPlayer.time = seekMs }
+        }
+    }
+
+    private fun markHealthGracePeriod(reason: String, graceMs: Long = HW_STALL_GRACE_MS) {
+        val now = SystemClock.elapsedRealtime()
+        healthIgnoreUntilMs = maxOf(healthIgnoreUntilMs, now + graceMs)
+        lastHealthPositionMs = safePositionMs()
+        lastHealthProgressMs = now
+        Log.d(TAG, "Health grace period: $reason for ${graceMs}ms")
+    }
+
+    private fun startHealthMonitor() {
+        healthJob?.cancel()
+        healthJob = scope.launch {
+            while (isActive) {
+                delay(HEALTH_MONITOR_INTERVAL_MS)
+                val request = currentRequest ?: continue
+                if (engineConfig.decoderMode != DecoderMode.HARDWARE) continue
+                if (hwFallbackSessionId == playbackSessionId) continue
+                if (pendingPlayUntilSurface || currentVideoLayout == null) continue
+                if (userStopped || isIdle) continue
+                if (!mediaPlayer.isPlaying) continue
+
+                val state = _uiState.value
+                if (state.isBuffering || !state.firstFrameRendered) {
+                    val now = SystemClock.elapsedRealtime()
+                    lastHealthProgressMs = now
+                    lastHealthPositionMs = safePositionMs()
+                    continue
+                }
+
+                val now = SystemClock.elapsedRealtime()
+                if (now < healthIgnoreUntilMs) {
+                    lastHealthProgressMs = now
+                    lastHealthPositionMs = safePositionMs()
+                    continue
+                }
+
+                val positionMs = safePositionMs()
+                val deltaMs = kotlin.math.abs(positionMs - lastHealthPositionMs)
+                if (deltaMs >= HW_STALL_MIN_PROGRESS_DELTA_MS) {
+                    lastHealthPositionMs = positionMs
+                    lastHealthProgressMs = now
+                    continue
+                }
+
+                val stalledMs = now - lastHealthProgressMs
+                if (stalledMs >= HW_STALL_TIMEOUT_MS) {
+                    Log.w(
+                        TAG,
+                        "HW stall detected (pos=$positionMs, stalledMs=$stalledMs). Triggering fallback."
+                    )
+                    if (maybeFallbackToSoftware("Stall")) {
+                        markHealthGracePeriod("FallbackAfterStall")
+                    } else {
+                        lastHealthProgressMs = now
+                        lastHealthPositionMs = positionMs
+                    }
+                }
+            }
+        }
+    }
+
+    private fun bindMediaPlayerEvents(player: MediaPlayer) {
+        player.setEventListener { event ->
             scope.launch {
                 when (event.type) {
                     MediaPlayer.Event.Buffering -> {
@@ -109,6 +272,8 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                         }
                         updateForegroundPlayback(true)
                         updateTracksFromPlayer()
+                        markHealthGracePeriod("Playing")
+                        applyPendingSeekIfNeeded()
                     }
 
                     MediaPlayer.Event.Paused -> {
@@ -122,13 +287,15 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                             videoReattachAttempts = 0
                             _uiState.update { it.copy(firstFrameRendered = true, isBuffering = false) }
                             retryCount = 0
-                        } else if (mediaPlayer.isPlaying && currentRequest != null) {
+                            markHealthGracePeriod("Vout>0", graceMs = 3000L)
+                        } else if (player.isPlaying && currentRequest != null) {
                             scheduleVideoReattach("Vout=0")
                         }
                     }
 
                     MediaPlayer.Event.EncounteredError -> {
                         Log.e(TAG, "Playback error (retry $retryCount/$maxRetries)")
+                        if (maybeFallbackToSoftware("EncounteredError")) return@launch
                         handlePlaybackError("Error de reproducción")
                     }
 
@@ -147,6 +314,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                             return@launch
                         }
                         if (currentRequest != null && !userStopped) {
+                            if (maybeFallbackToSoftware("Stopped")) return@launch
                             handleAutoRestart("Playback stopped")
                         } else {
                             isIdle = true
@@ -160,8 +328,6 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                 }
             }
         }
-
-        startProgressUpdates()
     }
 
     private fun scheduleRetry() {
@@ -179,7 +345,10 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     private fun scheduleVideoReattach(reason: String) {
         val layoutSnapshot = currentVideoLayout ?: return
-        if (videoReattachAttempts >= maxVideoReattachAttempts) return
+        if (videoReattachAttempts >= maxVideoReattachAttempts) {
+            maybeFallbackToSoftware("VoutLost/$reason")
+            return
+        }
         if (!layoutSnapshot.isAttachedToWindow) return
 
         videoReattachAttempts++
@@ -252,22 +421,38 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
-    fun playMedia(url: String, type: PlayerType = PlayerType.TV, forcePrepare: Boolean = false) {
+    fun playMedia(
+        url: String,
+        type: PlayerType = PlayerType.TV,
+        forcePrepare: Boolean = false,
+        startPositionMs: Long? = null
+    ) {
         if (url.isBlank()) return
 
         retryJob?.cancel()
         prepareJob?.cancel()
         userStopped = false
+        markHealthGracePeriod("playMedia", graceMs = 6000L)
 
         val lastRequest = currentRequest
         if (!forcePrepare && lastRequest?.url == url && lastRequest.type == type) {
             if (!mediaPlayer.isPlaying) {
+                if (currentVideoLayout == null) {
+                    pendingPlayUntilSurface = true
+                    Log.d(TAG, "Esperando surface para reanudar reproducciA3n")
+                    _uiState.update { it.copy(playerType = type, streamUrl = url, hasError = false) }
+                    return
+                }
                 isIdle = false
                 scope.launch(Dispatchers.IO) { runCatching { mediaPlayer.play() } }
             }
             _uiState.update { it.copy(playerType = type, streamUrl = url, hasError = false) }
             return
         }
+
+        playbackSessionId++
+        hwFallbackSessionId = null
+        pendingSeekAfterPlayMs = startPositionMs?.takeIf { it > 0L && type != PlayerType.TV }
 
         if (lastRequest?.url != url) {
             retryCount = 0
@@ -302,6 +487,12 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
                     .onFailure { stopEventsToIgnore.decrementAndGet() }
                 setMedia(url, type)
                 if (currentRequest !== requestSnapshot) return@launch
+                if (currentVideoLayout == null) {
+                    pendingPlayUntilSurface = true
+                    Log.d(TAG, "Esperando surface para iniciar reproducciA3n")
+                    return@launch
+                }
+                pendingPlayUntilSurface = false
                 mediaPlayer.play()
             }.onFailure { throwable ->
                 Log.e(TAG, "Error al preparar reproducción", throwable)
@@ -318,10 +509,21 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
             addOption(":http-user-agent=$userAgent")
             addOption(":user-agent=$userAgent")
             addOption(":http-reconnect=true")
-            addOption(":network-caching=${if (type == PlayerType.TV) 3000 else 4500}")
-            addOption(":live-caching=${if (type == PlayerType.TV) 2500 else 4500}")
+            val cachingMs =
+                when (type) {
+                    PlayerType.TV -> 4000
+                    PlayerType.SERIES -> 4500
+                    PlayerType.MOVIE -> 6500
+                }
+            addOption(":network-caching=$cachingMs")
+            addOption(":live-caching=$cachingMs")
             addOption(":clock-jitter=0")
             addOption(":clock-synchro=0")
+
+            when (engineConfig.decoderMode) {
+                DecoderMode.HARDWARE -> setHWDecoderEnabled(true, true)
+                DecoderMode.SOFTWARE -> setHWDecoderEnabled(false, true)
+            }
         }
         mediaPlayer.media = media
         media.release()
@@ -347,6 +549,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         prepareJob?.cancel()
         retryCount = 0
         userStopped = true
+        pendingPlayUntilSurface = false
 
         runCatching { mediaPlayer.stop() }
         runCatching { mediaPlayer.media = null }
@@ -363,6 +566,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
 
     fun seekTo(positionMs: Long) {
         mediaPlayer.time = positionMs.coerceAtLeast(0L)
+        markHealthGracePeriod("seekTo", graceMs = 4000L)
         updateProgress()
     }
 
@@ -392,15 +596,25 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         if (currentVideoLayout === layout) {
             runCatching { mediaPlayer.videoScale = videoScaleType }
             runCatching { mediaPlayer.updateVideoSurfaces() }
+            if (pendingPlayUntilSurface && currentRequest != null && !mediaPlayer.isPlaying) {
+                pendingPlayUntilSurface = false
+                scope.launch(Dispatchers.IO) { runCatching { mediaPlayer.play() } }
+            }
             return
         }
         runCatching { mediaPlayer.detachViews() }
         currentVideoLayout = layout
         videoReattachJob?.cancel()
         videoReattachAttempts = 0
-        mediaPlayer.attachViews(layout, null, false, true)
+        // Habilita la Surface de subtítulos para evitar "can't get Subtitles Surface" en algunos dispositivos (MIUI),
+        // incluso si el usuario mantiene los subtítulos desactivados (spuTrack = -1).
+        mediaPlayer.attachViews(layout, null, true, true)
         runCatching { mediaPlayer.videoScale = videoScaleType }
         runCatching { mediaPlayer.updateVideoSurfaces() }
+        if (pendingPlayUntilSurface && currentRequest != null && !mediaPlayer.isPlaying) {
+            pendingPlayUntilSurface = false
+            scope.launch(Dispatchers.IO) { runCatching { mediaPlayer.play() } }
+        }
     }
 
     fun refreshVideoSurfaces() {
@@ -435,6 +649,7 @@ class PlayerManager @Inject constructor(@ApplicationContext context: Context) {
         prepareJob?.cancel()
         videoReattachJob?.cancel()
         detachViewsJob?.cancel()
+        pendingPlayUntilSurface = false
         runCatching { mediaPlayer.detachViews() }
         currentVideoLayout = null
         runCatching { mediaPlayer.stop() }
