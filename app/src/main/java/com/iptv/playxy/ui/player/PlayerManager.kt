@@ -72,6 +72,7 @@ class PlayerManager @Inject constructor(
     private var retryCount = 0
     private var retryJob: Job? = null
     private var prepareJob: Job? = null
+    private var connectionTimeoutJob: Job? = null
     private var videoReattachJob: Job? = null
     private var videoReattachAttempts: Int = 0
     private var detachViewsJob: Job? = null
@@ -85,6 +86,13 @@ class PlayerManager @Inject constructor(
     private val maxVideoReattachAttempts = 6
     private val retryDelayMs = 2000L
     private val detachViewsDelayMs = 900L
+    private val connectionTimeoutMs = 15000L
+    
+    // Timeout inicial más corto para detectar fallos de conexión rápidos (HTTP connection failure)
+    // Si VLC no emite evento Buffering dentro de este tiempo, probablemente falló silenciosamente
+    private val earlyConnectionTimeoutMs = 5000L
+    private var earlyConnectionTimeoutJob: Job? = null
+    private var hasReceivedBuffering = false
 
     init {
         bindMediaPlayerEvents(mediaPlayer)
@@ -245,6 +253,12 @@ class PlayerManager @Inject constructor(
             scope.launch {
                 when (event.type) {
                     MediaPlayer.Event.Buffering -> {
+                        // Marcar que VLC empezó a conectar exitosamente
+                        if (!hasReceivedBuffering) {
+                            hasReceivedBuffering = true
+                            earlyConnectionTimeoutJob?.cancel()
+                            Log.d(TAG, "First buffering event received - connection established")
+                        }
                         bufferingPercent = event.buffering.coerceIn(0f, 100f)
                         _uiState.update {
                             val durationMs = it.durationMs.takeIf { d -> d > 0L } ?: safeDurationMs()
@@ -259,6 +273,9 @@ class PlayerManager @Inject constructor(
 
                     MediaPlayer.Event.Playing -> {
                         retryJob?.cancel()
+                        connectionTimeoutJob?.cancel()
+                        earlyConnectionTimeoutJob?.cancel()
+                        hasReceivedBuffering = true
                         retryCount = 0
                         userStopped = false
                         bufferingPercent = 100f
@@ -284,6 +301,8 @@ class PlayerManager @Inject constructor(
                     MediaPlayer.Event.Vout -> {
                         if (event.voutCount > 0) {
                             videoReattachJob?.cancel()
+                            connectionTimeoutJob?.cancel()
+                            earlyConnectionTimeoutJob?.cancel()
                             videoReattachAttempts = 0
                             _uiState.update { it.copy(firstFrameRendered = true, isBuffering = false) }
                             retryCount = 0
@@ -431,6 +450,9 @@ class PlayerManager @Inject constructor(
 
         retryJob?.cancel()
         prepareJob?.cancel()
+        connectionTimeoutJob?.cancel()
+        earlyConnectionTimeoutJob?.cancel()
+        hasReceivedBuffering = false
         userStopped = false
         markHealthGracePeriod("playMedia", graceMs = 6000L)
 
@@ -494,10 +516,43 @@ class PlayerManager @Inject constructor(
                 }
                 pendingPlayUntilSurface = false
                 mediaPlayer.play()
+                // Start connection timeout to detect silent VLC failures (e.g., HTTP connection failure)
+                startConnectionTimeout(requestSnapshot)
             }.onFailure { throwable ->
                 Log.e(TAG, "Error al preparar reproducción", throwable)
                 withContext(Dispatchers.Main.immediate) {
                     handlePlaybackError("No se pudo iniciar la reproducción")
+                }
+            }
+        }
+    }
+    
+    private fun startConnectionTimeout(requestSnapshot: PlaybackRequest?) {
+        connectionTimeoutJob?.cancel()
+        earlyConnectionTimeoutJob?.cancel()
+        
+        // Early timeout: detecta fallos de conexión rápidos (HTTP connection failure)
+        // Si VLC no emite ningún evento Buffering en 5 segundos, probablemente falló silenciosamente
+        earlyConnectionTimeoutJob = scope.launch {
+            delay(earlyConnectionTimeoutMs)
+            if (currentRequest === requestSnapshot && !hasReceivedBuffering && !mediaPlayer.isPlaying && !userStopped) {
+                val state = _uiState.value
+                if (!state.hasError && !state.firstFrameRendered) {
+                    Log.w(TAG, "Early connection timeout - No buffering received (retry $retryCount/$maxRetries)")
+                    handlePlaybackError("Error de conexión")
+                }
+            }
+        }
+        
+        // Timeout largo: para casos donde VLC conecta pero nunca empieza a reproducir
+        connectionTimeoutJob = scope.launch {
+            delay(connectionTimeoutMs)
+            // Si después del timeout no estamos reproduciendo y no hubo error, es un fallo silencioso
+            if (currentRequest === requestSnapshot && !mediaPlayer.isPlaying && !userStopped) {
+                val state = _uiState.value
+                if (!state.hasError && !state.firstFrameRendered) {
+                    Log.w(TAG, "Connection timeout - VLC failed silently (retry $retryCount/$maxRetries)")
+                    handlePlaybackError("Error de conexión")
                 }
             }
         }
@@ -547,6 +602,8 @@ class PlayerManager @Inject constructor(
     fun stopPlayback() {
         retryJob?.cancel()
         prepareJob?.cancel()
+        connectionTimeoutJob?.cancel()
+        earlyConnectionTimeoutJob?.cancel()
         retryCount = 0
         userStopped = true
         pendingPlayUntilSurface = false
@@ -649,6 +706,8 @@ class PlayerManager @Inject constructor(
         prepareJob?.cancel()
         videoReattachJob?.cancel()
         detachViewsJob?.cancel()
+        earlyConnectionTimeoutJob?.cancel()
+        connectionTimeoutJob?.cancel()
         pendingPlayUntilSurface = false
         runCatching { mediaPlayer.detachViews() }
         currentVideoLayout = null

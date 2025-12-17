@@ -368,12 +368,11 @@ fun MovieDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
                     .then(
-                        if (!(isFullscreen && shouldShowHeaderPlayer)) {
-                            Modifier.verticalScroll(rememberScrollState())
-                        } else {
+                        if (isFullscreen && shouldShowHeaderPlayer) {
                             Modifier
+                        } else {
+                            Modifier.padding(paddingValues).verticalScroll(rememberScrollState())
                         }
                     )
             ) column@{
@@ -908,7 +907,8 @@ fun MovieDetailScreen(
                 onSubtitleSelected = { option ->
                     if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
                 },
-                initialTab = trackDialogTab
+                initialTab = trackDialogTab,
+                immersive = isFullscreen && shouldShowHeaderPlayer
             )
         }
 

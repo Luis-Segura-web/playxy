@@ -338,7 +338,8 @@ fun TVScreen(
             onSubtitleSelected = { option ->
                 if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
             },
-            initialTab = trackDialogTab
+            initialTab = trackDialogTab,
+            immersive = isFullscreen && hasChannelContext
         )
     }
 

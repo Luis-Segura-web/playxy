@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -216,15 +217,17 @@ private fun SettingOption(
 private fun KeepSystemBarsHidden(enabled: Boolean) {
     val activity = LocalContext.current as? Activity
     DisposableEffect(enabled) {
-        if (!enabled) return@DisposableEffect onDispose { }
-
-        val window = activity?.window
-        if (window != null) {
-            val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (!enabled) return@DisposableEffect onDispose {}
+        val window = activity?.window ?: return@DisposableEffect onDispose {}
+        val decorView = window.decorView
+        
+        fun applyImmersiveMode() {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowCompat.getInsetsController(window, decorView)
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(WindowInsetsCompat.Type.systemBars())
             @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility =
+            decorView.systemUiVisibility =
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
                     View.SYSTEM_UI_FLAG_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -232,22 +235,21 @@ private fun KeepSystemBarsHidden(enabled: Boolean) {
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         }
-
-        onDispose {
-            val disposeWindow = activity?.window
-            if (disposeWindow != null) {
-                val controller = WindowCompat.getInsetsController(disposeWindow, disposeWindow.decorView)
-                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                controller.hide(WindowInsetsCompat.Type.systemBars())
-                @Suppress("DEPRECATION")
-                disposeWindow.decorView.systemUiVisibility =
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                        View.SYSTEM_UI_FLAG_FULLSCREEN or
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        
+        @Suppress("DEPRECATION")
+        val listener = View.OnSystemUiVisibilityChangeListener { visibility ->
+            if ((visibility and View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
+                decorView.postDelayed({ applyImmersiveMode() }, 100)
             }
+        }
+        
+        applyImmersiveMode()
+        @Suppress("DEPRECATION")
+        decorView.setOnSystemUiVisibilityChangeListener(listener)
+        
+        onDispose {
+            @Suppress("DEPRECATION")
+            decorView.setOnSystemUiVisibilityChangeListener(null)
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.iptv.playxy.ui.player
 
+import android.app.Activity
+import android.view.View
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,14 +22,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,8 +43,10 @@ fun TrackSelectionDialog(
     onDismiss: () -> Unit,
     onAudioSelected: (TrackOption) -> Unit,
     onSubtitleSelected: (TrackOption?) -> Unit,
-    initialTab: TrackSelectionTab? = null
+    initialTab: TrackSelectionTab? = null,
+    immersive: Boolean = false
 ) {
+    KeepSystemBarsHidden(enabled = immersive)
     val showAudioTab = tracks.audio.size > 1
     val showSubtitleTab = tracks.text.size > 1
     if (!showAudioTab && !showSubtitleTab) return
@@ -163,3 +172,44 @@ private fun TrackList(
 private enum class TrackTab { Audio, Subtitles }
 
 enum class TrackSelectionTab { Audio, Subtitles }
+
+@Composable
+private fun KeepSystemBarsHidden(enabled: Boolean) {
+    val activity = LocalContext.current as? Activity
+    DisposableEffect(enabled) {
+        if (!enabled) return@DisposableEffect onDispose {}
+        val window = activity?.window ?: return@DisposableEffect onDispose {}
+        val decorView = window.decorView
+        
+        fun applyImmersiveMode() {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowCompat.getInsetsController(window, decorView)
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            @Suppress("DEPRECATION")
+            decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        }
+        
+        @Suppress("DEPRECATION")
+        val listener = View.OnSystemUiVisibilityChangeListener { visibility ->
+            if ((visibility and View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
+                decorView.postDelayed({ applyImmersiveMode() }, 100)
+            }
+        }
+        
+        applyImmersiveMode()
+        @Suppress("DEPRECATION")
+        decorView.setOnSystemUiVisibilityChangeListener(listener)
+        
+        onDispose {
+            @Suppress("DEPRECATION")
+            decorView.setOnSystemUiVisibilityChangeListener(null)
+        }
+    }
+}

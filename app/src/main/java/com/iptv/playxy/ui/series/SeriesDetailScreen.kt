@@ -408,7 +408,8 @@ fun SeriesDetailScreen(
                 onSubtitleSelected = { option ->
                     if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
                 },
-                initialTab = trackDialogTab
+                initialTab = trackDialogTab,
+                immersive = isFullscreen && shouldShowHeaderPlayer
             )
         }
 
@@ -473,7 +474,13 @@ fun SeriesDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
+                    .then(
+                        if (isFullscreen && shouldShowHeaderPlayer) {
+                            Modifier
+                        } else {
+                            Modifier.padding(paddingValues)
+                        }
+                    )
             ) column@{
                 Box(
                     modifier =

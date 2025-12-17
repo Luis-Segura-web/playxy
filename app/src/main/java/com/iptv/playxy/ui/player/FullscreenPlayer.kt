@@ -9,12 +9,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -163,7 +170,8 @@ fun FullscreenPlayer(
             onSubtitleSelected = { option ->
                 if (option == null) playerManager.disableSubtitles() else playerManager.selectSubtitleTrack(option.id)
             },
-            initialTab = trackDialogTab
+            initialTab = trackDialogTab,
+            immersive = true
         )
     }
 
@@ -214,6 +222,100 @@ internal fun FullscreenOverlay(
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         var orientationMenuExpanded by remember { mutableStateOf(false) }
+        val bottomRightActions: @Composable RowScope.() -> Unit = {
+            val showAudio = state.tracks.audio.size > 1
+            val showSubtitles = state.tracks.text.size > 1
+            if (showAudio) {
+                IconButton(onClick = onShowAudioTracks) {
+                    Icon(imageVector = Icons.Default.Audiotrack, contentDescription = "Audio", tint = Color.White)
+                }
+            }
+            if (showSubtitles) {
+                IconButton(onClick = onShowSubtitleTracks) {
+                    Icon(
+                        imageVector = Icons.Default.ClosedCaption,
+                        contentDescription = "Subtítulos",
+                        tint = Color.White
+                    )
+                }
+            }
+            IconButton(onClick = onShowFit) {
+                Icon(
+                    imageVector = Icons.Default.AspectRatio,
+                    contentDescription = "Ajuste de pantalla",
+                    tint = Color.White
+                )
+            }
+            IconButton(onClick = onShowEngineSettings) {
+                Icon(
+                    imageVector = Icons.Default.Tune,
+                    contentDescription = "Motor de reproducción",
+                    tint = Color.White
+                )
+            }
+            Box {
+                val orientationIcon = when (orientationMode) {
+                    FullscreenOrientationMode.Horizontal -> Icons.Default.StayCurrentLandscape
+                    FullscreenOrientationMode.Vertical -> Icons.Default.StayCurrentPortrait
+                    FullscreenOrientationMode.Auto -> Icons.Default.ScreenRotation
+                }
+                IconButton(onClick = { orientationMenuExpanded = true }) {
+                    Icon(
+                        imageVector = orientationIcon,
+                        contentDescription = "Orientación",
+                        tint = Color.White
+                    )
+                }
+                DropdownMenu(
+                    expanded = orientationMenuExpanded,
+                    onDismissRequest = { orientationMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Automático") },
+                        leadingIcon = {
+                            if (orientationMode == FullscreenOrientationMode.Auto) {
+                                Icon(imageVector = Icons.Default.Check, contentDescription = null)
+                            }
+                        },
+                        onClick = {
+                            orientationMenuExpanded = false
+                            onOrientationModeChange(FullscreenOrientationMode.Auto)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Horizontal") },
+                        leadingIcon = {
+                            if (orientationMode == FullscreenOrientationMode.Horizontal) {
+                                Icon(imageVector = Icons.Default.Check, contentDescription = null)
+                            }
+                        },
+                        onClick = {
+                            orientationMenuExpanded = false
+                            onOrientationModeChange(FullscreenOrientationMode.Horizontal)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Vertical") },
+                        leadingIcon = {
+                            if (orientationMode == FullscreenOrientationMode.Vertical) {
+                                Icon(imageVector = Icons.Default.Check, contentDescription = null)
+                            }
+                        },
+                        onClick = {
+                            orientationMenuExpanded = false
+                            onOrientationModeChange(FullscreenOrientationMode.Vertical)
+                        }
+                    )
+                }
+            }
+            IconButton(onClick = onPip) {
+                Icon(
+                    imageVector = Icons.Default.PictureInPicture,
+                    contentDescription = "Picture in Picture",
+                    tint = Color.White
+                )
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -223,30 +325,29 @@ internal fun FullscreenOverlay(
                         colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
 )
                 )
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .align(Alignment.TopCenter)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver",
-                            tint = Color.White
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
-                        modifier = Modifier.weight(1f, fill = false)
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Volver",
+                        tint = Color.White
                     )
                 }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f)
+                )
+                if (false) {
                 Row {
                     val showAudio = state.tracks.audio.size > 1
                     val showSubtitles = state.tracks.text.size > 1
@@ -341,6 +442,7 @@ internal fun FullscreenOverlay(
                         )
                     }
                 }
+                }
             }
         }
 
@@ -363,6 +465,99 @@ internal fun FullscreenOverlay(
 
         Box(
             modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            val buttonBg = Color.Black.copy(alpha = 0.35f)
+            val sideButtonSize = 56.dp
+            val centerButtonSize = 64.dp
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onPrevious != null) {
+                        IconButton(
+                            onClick = onPrevious,
+                            enabled = enablePrevious,
+                            modifier = Modifier
+                                .size(sideButtonSize)
+                                .background(buttonBg, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipPrevious,
+                                contentDescription = "Anterior",
+                                tint = if (enablePrevious) Color.White else Color.Gray
+                            )
+                        }
+                    }
+                }
+
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    if (playerType != PlayerType.TV) {
+                        IconButton(
+                            onClick = onSeekBack,
+                            modifier = Modifier
+                                .size(sideButtonSize)
+                                .background(buttonBg, CircleShape)
+                        ) {
+                            Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
+                        }
+                    }
+                }
+
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    IconButton(
+                        onClick = { if (state.hasError) onRetry() else onTogglePlay() },
+                        modifier = Modifier
+                            .size(centerButtonSize)
+                            .background(buttonBg, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (state.hasError) Icons.Default.Refresh else if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (state.hasError) "Reintentar" else if (state.isPlaying) "Pausar" else "Reproducir",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    if (playerType != PlayerType.TV) {
+                        IconButton(
+                            onClick = onSeekForward,
+                            modifier = Modifier
+                                .size(sideButtonSize)
+                                .background(buttonBg, CircleShape)
+                        ) {
+                            Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
+                        }
+                    }
+                }
+
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onNext != null) {
+                        IconButton(
+                            onClick = onNext,
+                            enabled = enableNext,
+                            modifier = Modifier
+                                .size(sideButtonSize)
+                                .background(buttonBg, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "Siguiente",
+                                tint = if (enableNext) Color.White else Color.Gray
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(
@@ -370,6 +565,7 @@ internal fun FullscreenOverlay(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                     )
                 )
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             Column(
@@ -381,75 +577,16 @@ internal fun FullscreenOverlay(
                     PlaybackProgress(
                         state = state,
                         onSeek = onSeek,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingContent = bottomRightActions
                     )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onPrevious != null) {
-                        IconButton(
-                            onClick = onPrevious,
-                            enabled = enablePrevious,
-                            modifier = Modifier
-                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
-                                .padding(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SkipPrevious,
-                                contentDescription = "Anterior",
-                                tint = if (enablePrevious) Color.White else Color.Gray
-                            )
-                        }
-                    }
-                    if (playerType != PlayerType.TV) {
-                        IconButton(
-                            onClick = onSeekBack,
-                            modifier = Modifier
-                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
-                                .padding(6.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.Replay10, contentDescription = "Retroceder", tint = Color.White)
-                        }
-                    }
-                    IconButton(
-                        onClick = { if (state.hasError) onRetry() else onTogglePlay() },
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.35f), CircleShape)
-                            .padding(8.dp)
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (state.hasError) Icons.Default.Refresh else if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (state.hasError) "Reintentar" else if (state.isPlaying) "Pausar" else "Reproducir",
-                            tint = Color.White
-                        )
-                    }
-                    if (playerType != PlayerType.TV) {
-                        IconButton(
-                            onClick = onSeekForward,
-                            modifier = Modifier
-                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
-                                .padding(6.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.Forward10, contentDescription = "Avanzar", tint = Color.White)
-                        }
-                    }
-                    if ((playerType == PlayerType.TV || playerType == PlayerType.SERIES) && onNext != null) {
-                        IconButton(
-                            onClick = onNext,
-                            enabled = enableNext,
-                            modifier = Modifier
-                                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
-                                .padding(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SkipNext,
-                                contentDescription = "Siguiente",
-                                tint = if (enableNext) Color.White else Color.Gray
-                            )
-                        }
+                        bottomRightActions()
                     }
                 }
             }
@@ -482,16 +619,17 @@ internal fun ImmersiveMode(
     }
 
     DisposableEffect(enabled) {
-        if (!enabled) return@DisposableEffect onDispose {}
-
-        val window = activity?.window
-        if (window != null) {
-            val controller = WindowCompat.getInsetsController(window, window.decorView)
+        val window = activity?.window ?: return@DisposableEffect onDispose {}
+        val decorView = window.decorView
+        
+        fun applyImmersiveMode() {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowCompat.getInsetsController(window, decorView)
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(WindowInsetsCompat.Type.systemBars())
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
+            decorView.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
                     View.SYSTEM_UI_FLAG_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -500,15 +638,36 @@ internal fun ImmersiveMode(
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 )
         }
+        
+        fun exitImmersiveMode() {
+            val controller = WindowCompat.getInsetsController(window, decorView)
+            controller.show(WindowInsetsCompat.Type.systemBars())
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            WindowCompat.setDecorFitsSystemWindows(window, true)
+            @Suppress("DEPRECATION")
+            decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        }
+        
+        @Suppress("DEPRECATION")
+        val listener = View.OnSystemUiVisibilityChangeListener { visibility ->
+            if (enabled && (visibility and View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
+                decorView.postDelayed({ applyImmersiveMode() }, 100)
+            }
+        }
+        
+        if (enabled) {
+            applyImmersiveMode()
+            @Suppress("DEPRECATION")
+            decorView.setOnSystemUiVisibilityChangeListener(listener)
+        } else {
+            exitImmersiveMode()
+        }
 
         onDispose {
-            val disposeWindow = activity?.window
-            if (disposeWindow != null) {
-                val controller = WindowCompat.getInsetsController(disposeWindow, disposeWindow.decorView)
-                controller.show(WindowInsetsCompat.Type.systemBars())
-                disposeWindow.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                @Suppress("DEPRECATION")
-                disposeWindow.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+            @Suppress("DEPRECATION")
+            decorView.setOnSystemUiVisibilityChangeListener(null)
+            if (enabled) {
+                exitImmersiveMode()
             }
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
